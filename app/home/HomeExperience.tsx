@@ -3,7 +3,23 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import {
+  publicEditorContent,
+  seedEditorContent,
+  type EditableCollection,
+  type EditorContent,
+  type EditorialStatus,
+} from "../../content/editorial";
 import { siteData, type LearningEntry, type NoteEntry, type ProjectEntry, type TimelineEntry } from "../../content/siteData";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -33,6 +49,33 @@ const studyImages = [
   "https://picsum.photos/seed/deep-field/1200/900",
   "https://picsum.photos/seed/analog-notes/1200/900",
 ];
+
+type DrawerState = { collection: EditableCollection; id?: string } | null;
+
+type EditorController = {
+  content: EditorContent;
+  ownerAvailable: boolean;
+  editMode: boolean;
+  canEdit: boolean;
+  drawer: DrawerState;
+  statusMessage: string | null;
+  openEditor: (collection: EditableCollection, id?: string) => void;
+  closeEditor: () => void;
+  enterEditMode: () => Promise<void>;
+  viewAsVisitor: () => Promise<void>;
+  signOut: () => void;
+  saveItem: (collection: EditableCollection, id: string | undefined, payload: Record<string, unknown>) => Promise<void>;
+  hideItem: (collection: EditableCollection, id: string) => Promise<void>;
+  reorder: (collection: EditableCollection, orderedIds: string[]) => Promise<void>;
+  saveIdentity: (field: "description", value: string) => Promise<void>;
+  setStatusMessage: (value: string | null) => void;
+};
+
+const EditorContext = createContext<EditorController | null>(null);
+
+function useEditor(): EditorController | null {
+  return useContext(EditorContext);
+}
 
 function normalizeRoute(pathname: string): Route {
   return routes.includes(pathname as Route) ? (pathname as Route) : "/";
@@ -162,15 +205,86 @@ function StatusMark({ children }: { children: ReactNode }) {
   return <span className="status-mark">{children}</span>;
 }
 
+function ContextEditButton({ label = "Editar", onClick }: { label?: string; onClick: () => void }) {
+  const editor = useEditor();
+  if (!editor?.canEdit) return null;
+  return (
+    <button type="button" className="context-edit" onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+function EditorAddButton({ collection, children }: { collection: EditableCollection; children: ReactNode }) {
+  const editor = useEditor();
+  if (!editor?.canEdit) return null;
+  return (
+    <button type="button" className="editor-add" onClick={() => editor.openEditor(collection)}>
+      <span aria-hidden="true">+</span> {children}
+    </button>
+  );
+}
+
+function EditorialBadge({ status }: { status?: EditorialStatus }) {
+  const editor = useEditor();
+  if (!editor?.canEdit || !status || status === "published") return null;
+  return <span className={`editorial-badge editorial-badge--${status}`}>{status === "draft" ? "Rascunho" : "Oculto"}</span>;
+}
+
+function InlineTextEditor({
+  value,
+  label,
+  onSave,
+}: {
+  value: string;
+  label: string;
+  onSave: (value: string) => Promise<void>;
+}) {
+  const editor = useEditor();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  if (!editor?.canEdit) return <>{value}</>;
+
+  if (editing) {
+    return (
+      <form
+        className="inline-editor-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          await onSave(draft.trim());
+          setEditing(false);
+        }}
+      >
+        <textarea aria-label={label} value={draft} onChange={(event) => setDraft(event.target.value)} rows={4} />
+        <span className="inline-editor-actions">
+          <button type="submit" className="button button-primary button-small">Salvar</button>
+          <button type="button" className="button button-quiet button-small" onClick={() => { setDraft(value); setEditing(false); }}>Cancelar</button>
+        </span>
+      </form>
+    );
+  }
+
+  return (
+    <span className="inline-editor-value">
+      {value}
+      <button type="button" className="context-edit" onClick={() => setEditing(true)}>{label}</button>
+    </span>
+  );
+}
+
 function Timeline({ entries, compact = false }: { entries: readonly TimelineEntry[]; compact?: boolean }) {
+  const editor = useEditor();
   return (
     <ol className={`timeline ${compact ? "timeline-compact" : ""}`}>
       {entries.map((entry, index) => (
         <li key={`${entry.title}-${entry.period}`} className="timeline-item">
           <span className={`timeline-node ${index === 0 ? "is-current" : ""}`} aria-hidden="true" />
           <div className="timeline-copy">
-            <p className="timeline-period">{entry.period}</p>
-            <h3>{entry.title}</h3>
+            <div className="editor-line">
+              <p className="timeline-period">{entry.period}</p>
+              {editor?.canEdit && "id" in entry ? <ContextEditButton onClick={() => editor.openEditor("timeline", String(entry.id))} /> : null}
+            </div>
+            <h3>{entry.title} <EditorialBadge status={(entry as TimelineEntry & { editorialStatus?: EditorialStatus }).editorialStatus} /></h3>
             {entry.institution ? <p className="timeline-institution">{entry.institution}</p> : null}
             <p>{entry.description}</p>
           </div>
@@ -180,7 +294,8 @@ function Timeline({ entries, compact = false }: { entries: readonly TimelineEntr
   );
 }
 
-function ProjectMiniCard({ project }: { project: ProjectEntry }) {
+function ProjectMiniCard({ project }: { project: ProjectEntry & Partial<{ id: string; editorialStatus: EditorialStatus }> }) {
+  const editor = useEditor();
   return (
     <article className="project-mini-card">
       <div className="project-mini-image image-reveal">
@@ -189,48 +304,53 @@ function ProjectMiniCard({ project }: { project: ProjectEntry }) {
       <div className="project-mini-copy">
         <div className="card-line">
           <h3>{project.title}</h3>
-          <StatusMark>{project.status}</StatusMark>
+          <span className="card-statuses"><StatusMark>{project.status}</StatusMark><EditorialBadge status={project.editorialStatus} /></span>
         </div>
         <p>{project.description}</p>
         <div className="tag-row" aria-label="Aspectos preparados para o projeto">
           {project.technologies.map((technology) => <span key={technology}>{technology}</span>)}
         </div>
+        {editor?.canEdit && project.id ? <ContextEditButton onClick={() => editor.openEditor("projects", project.id)} /> : null}
       </div>
     </article>
   );
 }
 
-function NoteRow({ note }: { note: NoteEntry }) {
+function NoteRow({ note }: { note: NoteEntry & Partial<{ id: string; editorialStatus: EditorialStatus }> }) {
+  const editor = useEditor();
   return (
     <article className="note-row">
       <div>
         <p className="note-area">{note.area}</p>
-        <h3>{note.title}</h3>
+        <h3>{note.title} <EditorialBadge status={note.editorialStatus} /></h3>
         <p>{note.summary}</p>
       </div>
       <div className="note-meta">
         <span>{note.date}</span>
         <span>{note.readingTime}</span>
+        {editor?.canEdit && note.id ? <ContextEditButton onClick={() => editor.openEditor("notes", note.id)} /> : null}
       </div>
     </article>
   );
 }
 
-function LearningRow({ entry }: { entry: LearningEntry }) {
+function LearningRow({ entry }: { entry: LearningEntry & Partial<{ id: string; editorialStatus: EditorialStatus }> }) {
+  const editor = useEditor();
   return (
     <article className="learning-row">
       <span className="learning-symbol" aria-hidden="true">+</span>
       <div>
-        <h3>{entry.title}</h3>
+        <h3>{entry.title} <EditorialBadge status={entry.editorialStatus} /></h3>
         <p>{entry.institution}</p>
       </div>
       <span className="learning-year">{entry.year}</span>
+      {editor?.canEdit && entry.id ? <ContextEditButton onClick={() => editor.openEditor("learning", entry.id)} /> : null}
     </article>
   );
 }
 
-function InterestMarquee() {
-  const items = [...siteData.interests, ...siteData.interests];
+function InterestMarquee({ interests }: { interests: readonly string[] }) {
+  const items = [...interests, ...interests];
   return (
     <div className="interest-marquee" aria-label="Interesses de Mikael">
       <div className="marquee-track">
@@ -238,6 +358,39 @@ function InterestMarquee() {
           <span key={`${interest}-${index}`}>
             {interest}
             <span className="marquee-divider" aria-hidden="true">/</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InterestEditor() {
+  const editor = useEditor();
+  if (!editor?.canEdit) return null;
+
+  const move = (index: number, direction: -1 | 1) => {
+    const next = [...editor.content.interests];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    void editor.reorder("interests", next.map((item) => item.id));
+  };
+
+  return (
+    <div className="interest-editor" aria-label="Editar interesses">
+      <div className="editor-line">
+        <span className="editor-helper">Interesses exibidos no movimento acima</span>
+        <EditorAddButton collection="interests">Adicionar interesse</EditorAddButton>
+      </div>
+      <div className="interest-editor-list">
+        {editor.content.interests.map((interest, index) => (
+          <span className="interest-editor-item" key={interest.id}>
+            <span>{interest.value}</span>
+            <ContextEditButton label="Renomear" onClick={() => editor.openEditor("interests", interest.id)} />
+            <button type="button" className="context-icon" aria-label={`Mover ${interest.value} para cima`} onClick={() => move(index, -1)}>↑</button>
+            <button type="button" className="context-icon" aria-label={`Mover ${interest.value} para baixo`} onClick={() => move(index, 1)}>↓</button>
+            <button type="button" className="context-icon context-icon-danger" aria-label={`Remover ${interest.value}`} onClick={() => void editor.hideItem("interests", interest.id)}>×</button>
           </span>
         ))}
       </div>
@@ -277,15 +430,17 @@ function QuestionCarousel() {
 }
 
 function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
   return (
     <>
       <section className="hero chapter" id="inicio">
         <div className="star-field" aria-hidden="true" />
         <div className="container hero-grid">
           <div className="hero-copy hero-reveal">
-            <p className="hero-kicker">{siteData.identity.role}</p>
+            <p className="hero-kicker">{content.identity.role}</p>
             <h1>Mikael</h1>
-            <p className="hero-lead">{siteData.identity.description}</p>
+            <p className="hero-lead"><InlineTextEditor value={content.identity.description} label="Editar apresentação" onSave={(value) => editor?.saveIdentity("description", value) ?? Promise.resolve()} /></p>
             <div className="hero-actions">
               <SiteLink href="/projetos" className="button button-primary" onNavigate={onNavigate}>Ver projetos</SiteLink>
               <SiteLink href="/caderno" className="button button-outline" onNavigate={onNavigate}>Ler caderno</SiteLink>
@@ -339,7 +494,8 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
                 </div>
                 <span className="card-index" aria-hidden="true">01</span>
               </div>
-              <Timeline entries={siteData.timeline} compact />
+              <Timeline entries={content.timeline} compact />
+              <EditorAddButton collection="timeline">Adicionar marco</EditorAddButton>
               <ArrowLink href="/trajetoria" onNavigate={onNavigate}>Ver toda a trajetória</ArrowLink>
             </article>
 
@@ -352,8 +508,9 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
                 <ArrowLink href="/projetos" onNavigate={onNavigate} className="arrow-link arrow-link-small">Ver todos</ArrowLink>
               </div>
               <div className="project-list">
-                {siteData.projects.map((project) => <ProjectMiniCard key={project.title} project={project} />)}
+                {content.projects.map((project) => <ProjectMiniCard key={project.id} project={project} />)}
               </div>
+              <EditorAddButton collection="projects">Adicionar projeto</EditorAddButton>
             </article>
 
             <article className="bento-card notebook-card reveal" id="caderno-resumo">
@@ -364,8 +521,9 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
                 </div>
               </div>
               <div className="note-list">
-                {siteData.notes.slice(0, 2).map((note) => <NoteRow key={note.title} note={note} />)}
+                {content.notes.slice(0, 2).map((note) => <NoteRow key={note.id} note={note} />)}
               </div>
+              <EditorAddButton collection="notes">Nova nota</EditorAddButton>
               <ArrowLink href="/caderno" onNavigate={onNavigate}>Ir para o caderno</ArrowLink>
             </article>
 
@@ -378,8 +536,9 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
                 <ArrowLink href="/formacao" onNavigate={onNavigate} className="arrow-link arrow-link-small">Abrir índice</ArrowLink>
               </div>
               <div className="learning-list">
-                {siteData.learning.map((entry) => <LearningRow key={entry.title} entry={entry} />)}
+                {content.learning.map((entry) => <LearningRow key={entry.id} entry={entry} />)}
               </div>
+              <EditorAddButton collection="learning">Adicionar formação</EditorAddButton>
             </article>
           </div>
         </div>
@@ -390,7 +549,8 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           <p className="eyebrow">Eixos de curiosidade</p>
           <p>Astrofísica e Física são o eixo. Tecnologia aparece como ferramenta para perguntar melhor, organizar o estudo e construir pequenas coisas.</p>
         </div>
-        <InterestMarquee />
+        <InterestEditor />
+        <InterestMarquee interests={content.interests.map((interest) => interest.value)} />
       </section>
 
       <section className="chapter study-stage" id="estudo">
@@ -434,6 +594,8 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 }
 
 function AboutPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
   return (
     <div className="inner-page chapter">
       <div className="container">
@@ -446,13 +608,13 @@ function AboutPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           <article className="editorial-panel reveal">
             <p className="eyebrow">Como penso este espaço</p>
             <h2>Curiosidade antes de performance.</h2>
-            <p>Não há uma biografia grandiosa aqui. Há uma formação que está começando, perguntas que continuam abertas e uma vontade de organizar o conhecimento para conseguir voltar a ele depois.</p>
+            <p><InlineTextEditor value={content.identity.description} label="Editar texto" onSave={(value) => editor?.saveIdentity("description", value) ?? Promise.resolve()} /></p>
             <p>Física e Astrofísica são o centro acadêmico. Programação, inteligência artificial e ferramentas digitais entram como interesses e instrumentos em desenvolvimento.</p>
           </article>
           <article className="editorial-panel editorial-panel-dark reveal">
             <p className="eyebrow">Ferramentas que uso e estou aprendendo</p>
             <ul className="tool-list">
-              {siteData.tools.map((tool) => <li key={tool}>{tool}</li>)}
+              {content.tools.map((tool) => <li key={tool}>{tool}</li>)}
             </ul>
           </article>
         </div>
@@ -463,6 +625,8 @@ function AboutPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 }
 
 function TrajectoryPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
   return (
     <div className="inner-page chapter">
       <div className="container narrow-container">
@@ -472,7 +636,8 @@ function TrajectoryPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           description="A linha do tempo começa com os poucos marcos que fazem sentido agora. Novos eventos entram quando existirem, não para preencher espaço."
         />
         <div className="full-timeline-panel reveal">
-          <Timeline entries={siteData.timeline} />
+          <Timeline entries={content.timeline} />
+          <EditorAddButton collection="timeline">Adicionar marco</EditorAddButton>
         </div>
         <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate}>Voltar ao início</ArrowLink></div>
       </div>
@@ -481,6 +646,8 @@ function TrajectoryPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 }
 
 function ProjectsPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
   return (
     <div className="inner-page chapter">
       <div className="container">
@@ -490,21 +657,23 @@ function ProjectsPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           description="Ainda não há projetos públicos completos para apresentar. Em vez de preencher esta página com conquistas inventadas, deixo a arquitetura preparada para documentar cada projeto quando ele existir."
         />
         <div className="projects-page-grid">
-          {siteData.projects.map((project) => (
-            <article className="project-large-card reveal" key={project.title}>
+          {content.projects.map((project) => (
+            <article className="project-large-card reveal" key={project.id}>
               <div className="project-large-image image-reveal">
                 <img src={project.image} alt={project.imageAlt} loading="lazy" />
               </div>
               <div className="project-large-copy">
-                <div className="card-line"><StatusMark>{project.status}</StatusMark><span className="project-period">{project.period}</span></div>
+                <div className="card-line"><span className="card-statuses"><StatusMark>{project.status}</StatusMark><EditorialBadge status={project.editorialStatus} /></span><span className="project-period">{project.period}</span></div>
                 <h2>{project.title}</h2>
                 <p>{project.description}</p>
                 <div className="tag-row">{project.technologies.map((technology) => <span key={technology}>{technology}</span>)}</div>
                 <p className="placeholder-note">Conteúdo temporário: substituir quando houver um projeto público para documentar.</p>
+                {editor?.canEdit ? <ContextEditButton onClick={() => editor.openEditor("projects", project.id)} /> : null}
               </div>
             </article>
           ))}
         </div>
+        <EditorAddButton collection="projects">Adicionar projeto</EditorAddButton>
         <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate}>Voltar ao início</ArrowLink></div>
       </div>
     </div>
@@ -512,6 +681,8 @@ function ProjectsPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 }
 
 function JournalPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
   return (
     <div className="inner-page chapter">
       <div className="container narrow-container">
@@ -521,8 +692,9 @@ function JournalPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           description="Um índice pessoal para estudos, leituras e perguntas. As primeiras entradas ainda serão escritas; a estrutura já aceita conteúdo organizado por área, data e tempo de leitura."
         />
         <div className="journal-list reveal">
-          {siteData.notes.map((note) => <NoteRow key={note.title} note={note} />)}
+          {content.notes.map((note) => <NoteRow key={note.id} note={note} />)}
         </div>
+        <EditorAddButton collection="notes">Nova nota</EditorAddButton>
         <div className="markdown-note reveal">
           <p className="eyebrow">Próxima evolução</p>
           <p>Quando houver textos reais, esta área pode receber Markdown ou MDX sem exigir que a interface seja reescrita.</p>
@@ -534,6 +706,8 @@ function JournalPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 }
 
 function FormationPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
   return (
     <div className="inner-page chapter">
       <div className="container narrow-container">
@@ -543,8 +717,9 @@ function FormationPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           description="A interface mostra apenas metadados públicos apropriados. Documentos originais permanecem privados por padrão e só serão associados quando isso fizer sentido."
         />
         <div className="formation-list reveal">
-          {siteData.learning.map((entry) => <LearningRow key={entry.title} entry={entry} />)}
+          {content.learning.map((entry) => <LearningRow key={entry.id} entry={entry} />)}
         </div>
+        <EditorAddButton collection="learning">Adicionar formação</EditorAddButton>
         <div className="privacy-panel reveal">
           <p className="eyebrow">Privacidade</p>
           <p>Não há PDFs de certificados nem informações sensíveis publicados nesta primeira versão.</p>
@@ -576,6 +751,7 @@ function ContactPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 }
 
 function SiteFooter({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
   return (
     <footer className="site-footer">
       <div className="container footer-main">
@@ -601,9 +777,278 @@ function SiteFooter({ onNavigate }: { onNavigate: (href: Route) => void }) {
       <div className="container footer-bottom">
         <span>© {new Date().getFullYear()} Mikael</span>
         <span>Feito com curiosidade e tempo.</span>
+        {editor?.ownerAvailable && !editor.editMode ? <button type="button" className="owner-entry" onClick={() => void editor.enterEditMode()}>Editar site</button> : null}
       </div>
     </footer>
   );
+}
+
+function OwnerBar() {
+  const editor = useEditor();
+  if (!editor?.canEdit) return null;
+  return (
+    <aside className="owner-bar" aria-label="Ferramentas do proprietário">
+      <span><strong>Modo de edição</strong><small>{editor.statusMessage ?? "As alterações são salvas no próprio site."}</small></span>
+      <div className="owner-bar-actions">
+        <button type="button" onClick={() => void editor.viewAsVisitor()}>Visualizar como visitante</button>
+        <button type="button" className="owner-bar-signout" onClick={editor.signOut}>Sair</button>
+      </div>
+    </aside>
+  );
+}
+
+type EditorFormState = Record<string, string | boolean>;
+
+function EditorDrawer() {
+  const editor = useEditor();
+  if (!editor?.drawer || !editor.canEdit) return null;
+  return <EditorDrawerContent key={`${editor.drawer.collection}-${editor.drawer.id ?? "new"}`} drawer={editor.drawer} editor={editor} />;
+}
+
+function EditorDrawerContent({ drawer, editor }: { drawer: NonNullable<DrawerState>; editor: EditorController }) {
+  const [fields, setFields] = useState<EditorFormState>(() => initialEditorFields(editor.content, drawer));
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const setField = (name: string, value: string | boolean) => setFields((current) => ({ ...current, [name]: value }));
+  const currentItem = drawer.id ? (editor.content[drawer.collection] as Array<{ id: string }>).find((item) => item.id === drawer.id) : null;
+  const isExisting = Boolean(currentItem);
+  const title = isExisting ? `Editar ${collectionLabel(drawer.collection).toLowerCase()}` : `Adicionar ${collectionLabel(drawer.collection).toLowerCase()}`;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const forcedStatus = submitter?.value === "published" || submitter?.value === "draft" ? submitter.value : fields.editorialStatus;
+    setBusy(true);
+    setError(null);
+    try {
+      const payload: Record<string, unknown> = { ...fields, editorialStatus: forcedStatus };
+      if (typeof payload.technologies === "string") payload.technologies = commaList(payload.technologies);
+      if (typeof payload.tags === "string") payload.tags = commaList(payload.tags);
+
+      if (coverFile) {
+        const asset = await uploadAsset(coverFile, "image", true, String(payload.imageAlt || payload.title || "Capa"));
+        payload.coverAssetId = asset.id;
+        payload.image = `/api/assets?id=${encodeURIComponent(asset.id)}`;
+        payload.imageAlt = asset.altText || payload.imageAlt || payload.title;
+      }
+      if (documentFile) {
+        const asset = await uploadAsset(documentFile, "document", payload.documentPublic === true, String(payload.title || "Documento"));
+        payload.documentAssetId = asset.id;
+      }
+
+      await editor.saveItem(drawer.collection, drawer.id, payload);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Não foi possível salvar o item.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="editor-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) editor.closeEditor(); }}>
+      <section className="editor-drawer" role="dialog" aria-modal="true" aria-labelledby="editor-drawer-title">
+        <div className="editor-drawer-heading">
+          <div>
+            <p className="eyebrow">Edição contextual</p>
+            <h2 id="editor-drawer-title">{title}</h2>
+          </div>
+          <button type="button" className="drawer-close" aria-label="Fechar editor" onClick={editor.closeEditor}>×</button>
+        </div>
+
+        <form className="editor-form" onSubmit={submit}>
+          {drawer.collection === "timeline" ? <TimelineFields fields={fields} setField={setField} /> : null}
+          {drawer.collection === "projects" ? <ProjectFields fields={fields} setField={setField} setCoverFile={setCoverFile} /> : null}
+          {drawer.collection === "notes" ? <NoteFields fields={fields} setField={setField} setCoverFile={setCoverFile} /> : null}
+          {drawer.collection === "learning" ? <LearningFields fields={fields} setField={setField} setCoverFile={setCoverFile} setDocumentFile={setDocumentFile} /> : null}
+          {drawer.collection === "interests" ? <InterestFields fields={fields} setField={setField} /> : null}
+
+          {error ? <p className="editor-error" role="alert">{error}</p> : null}
+          <div className="editor-form-actions">
+            <button type="button" className="button button-quiet" onClick={editor.closeEditor} disabled={busy}>Cancelar</button>
+            {isExisting ? <button type="button" className="button button-danger" onClick={() => { if (drawer.id && window.confirm("Ocultar este item do site?")) void editor.hideItem(drawer.collection, drawer.id); }} disabled={busy}>Ocultar</button> : null}
+            <span className="editor-form-submit-group">
+              <button type="submit" name="actionStatus" value="draft" className="button button-outline" disabled={busy}>{busy ? "Salvando…" : "Salvar rascunho"}</button>
+              <button type="submit" name="actionStatus" value="published" className="button button-primary" disabled={busy}>{busy ? "Salvando…" : "Publicar"}</button>
+            </span>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function TimelineFields({ fields, setField }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void }) {
+  return (
+    <div className="editor-field-grid">
+      <EditorInput label="Período" value={String(fields.period ?? "")} onChange={(value) => setField("period", value)} />
+      <EditorInput label="Título" value={String(fields.title ?? "")} onChange={(value) => setField("title", value)} required />
+      <EditorInput label="Instituição / contexto" value={String(fields.institution ?? "")} onChange={(value) => setField("institution", value)} />
+      <EditorInput label="Categoria" value={String(fields.category ?? "")} onChange={(value) => setField("category", value)} />
+      <EditorTextarea label="Descrição curta" value={String(fields.description ?? "")} onChange={(value) => setField("description", value)} />
+      <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+    </div>
+  );
+}
+
+function ProjectFields({ fields, setField, setCoverFile }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void; setCoverFile: (file: File | null) => void }) {
+  return (
+    <div className="editor-field-grid">
+      <EditorInput label="Título" value={String(fields.title ?? "")} onChange={(value) => setField("title", value)} required />
+      <EditorTextarea label="Descrição curta" value={String(fields.description ?? "")} onChange={(value) => setField("description", value)} required />
+      <div className="editor-two-col">
+        <EditorInput label="Período" value={String(fields.period ?? "")} onChange={(value) => setField("period", value)} />
+        <EditorInput label="Rótulo de status" value={String(fields.status ?? "")} onChange={(value) => setField("status", value)} />
+      </div>
+      <details className="editor-accordion">
+        <summary>Mais opções</summary>
+        <div className="editor-field-grid editor-field-grid--nested">
+          <EditorInput label="Tecnologias (separadas por vírgula)" value={String(fields.technologies ?? "")} onChange={(value) => setField("technologies", value)} />
+          <EditorInput label="GitHub" type="url" value={String(fields.github ?? "")} onChange={(value) => setField("github", value)} />
+          <EditorInput label="Demo" type="url" value={String(fields.demo ?? "")} onChange={(value) => setField("demo", value)} />
+          <EditorInput label="Texto alternativo da capa" value={String(fields.imageAlt ?? "")} onChange={(value) => setField("imageAlt", value)} />
+          <EditorTextarea label="Descrição longa" value={String(fields.body ?? "")} onChange={(value) => setField("body", value)} />
+          <UploadField label="Capa do projeto" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+        </div>
+      </details>
+      <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+    </div>
+  );
+}
+
+function NoteFields({ fields, setField, setCoverFile }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void; setCoverFile: (file: File | null) => void }) {
+  return (
+    <div className="editor-field-grid">
+      <EditorInput label="Título" value={String(fields.title ?? "")} onChange={(value) => setField("title", value)} required />
+      <RichEditor value={String(fields.body ?? "")} onChange={(value) => setField("body", value)} />
+      <div className="editor-two-col">
+        <EditorInput label="Área" value={String(fields.area ?? "")} onChange={(value) => setField("area", value)} />
+        <EditorInput label="Data" value={String(fields.date ?? "")} onChange={(value) => setField("date", value)} />
+      </div>
+      <details className="editor-accordion">
+        <summary>Mais opções</summary>
+        <div className="editor-field-grid editor-field-grid--nested">
+          <EditorInput label="Tags (separadas por vírgula)" value={String(fields.tags ?? "")} onChange={(value) => setField("tags", value)} />
+          <UploadField label="Imagem de capa" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+        </div>
+      </details>
+      <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+    </div>
+  );
+}
+
+function LearningFields({ fields, setField, setCoverFile, setDocumentFile }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void; setCoverFile: (file: File | null) => void; setDocumentFile: (file: File | null) => void }) {
+  return (
+    <div className="editor-field-grid">
+      <EditorInput label="Nome" value={String(fields.title ?? "")} onChange={(value) => setField("title", value)} required />
+      <EditorInput label="Instituição" value={String(fields.institution ?? "")} onChange={(value) => setField("institution", value)} required />
+      <div className="editor-two-col">
+        <EditorInput label="Ano / período" value={String(fields.year ?? "")} onChange={(value) => setField("year", value)} required />
+        <EditorInput label="Horas" value={String(fields.hours ?? "")} onChange={(value) => setField("hours", value)} />
+      </div>
+      <EditorInput label="Categoria" value={String(fields.category ?? "")} onChange={(value) => setField("category", value)} />
+      <EditorTextarea label="Descrição" value={String(fields.description ?? "")} onChange={(value) => setField("description", value)} />
+      <details className="editor-accordion">
+        <summary>Mais opções e documentos</summary>
+        <div className="editor-field-grid editor-field-grid--nested">
+          <UploadField label="Capa opcional" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+          <UploadField label="Certificado / documento (privado por padrão)" accept="application/pdf,image/jpeg,image/png" onFile={setDocumentFile} />
+          <label className="editor-checkbox"><input type="checkbox" checked={fields.documentPublic === true} onChange={(event) => setField("documentPublic", event.target.checked)} /> Tornar o documento público</label>
+        </div>
+      </details>
+      <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+    </div>
+  );
+}
+
+function InterestFields({ fields, setField }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void }) {
+  return (
+    <div className="editor-field-grid">
+      <EditorInput label="Interesse" value={String(fields.value ?? "")} onChange={(value) => setField("value", value)} required />
+      <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+    </div>
+  );
+}
+
+function EditorInput({ label, value, onChange, required = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: string }) {
+  return <label className="editor-field"><span>{label}{required ? " *" : ""}</span><input type={type} value={value} required={required} onChange={(event) => onChange(event.target.value)} /></label>;
+}
+
+function EditorTextarea({ label, value, onChange, required = false }: { label: string; value: string; onChange: (value: string) => void; required?: boolean }) {
+  return <label className="editor-field"><span>{label}{required ? " *" : ""}</span><textarea value={value} required={required} onChange={(event) => onChange(event.target.value)} rows={4} /></label>;
+}
+
+function EditorStatusField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <label className="editor-field"><span>Visibilidade</span><select value={value} onChange={(event) => onChange(event.target.value)}><option value="draft">Rascunho</option><option value="published">Publicado</option><option value="hidden">Oculto</option></select></label>;
+}
+
+function RichEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) editorRef.current.innerHTML = value;
+  }, [value]);
+  const format = (command: string, commandValue?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, commandValue);
+    onChange(editorRef.current?.innerHTML ?? "");
+  };
+  return (
+    <div className="editor-field editor-rich-field">
+      <span>Texto da nota *</span>
+      <div className="editor-toolbar" role="toolbar" aria-label="Formatação do texto">
+        <button type="button" onClick={() => format("formatBlock", "h2")} aria-label="Título">H2</button>
+        <button type="button" onClick={() => format("formatBlock", "h3")} aria-label="Subtítulo">H3</button>
+        <button type="button" onClick={() => format("bold")} aria-label="Negrito"><strong>B</strong></button>
+        <button type="button" onClick={() => format("italic")} aria-label="Itálico"><em>I</em></button>
+        <button type="button" onClick={() => format("formatBlock", "blockquote")} aria-label="Citação">“</button>
+        <button type="button" onClick={() => format("insertUnorderedList")} aria-label="Lista">•</button>
+        <button type="button" onClick={() => format("formatBlock", "pre")} aria-label="Código">&lt;/&gt;</button>
+        <button type="button" onClick={() => { const url = window.prompt("URL do link"); if (url) format("createLink", url); }} aria-label="Adicionar link">↗</button>
+      </div>
+      <div ref={editorRef} className="editor-richtext" contentEditable suppressContentEditableWarning onInput={() => onChange(editorRef.current?.innerHTML ?? "")} role="textbox" aria-multiline="true" />
+    </div>
+  );
+}
+
+function UploadField({ label, accept, onFile }: { label: string; accept: string; onFile: (file: File | null) => void }) {
+  return (
+    <label className="editor-upload" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFile(event.dataTransfer.files[0] ?? null); }}>
+      <span>{label}</span>
+      <small>Clique ou arraste um arquivo</small>
+      <input type="file" accept={accept} onChange={(event) => onFile(event.target.files?.[0] ?? null)} />
+    </label>
+  );
+}
+
+function initialEditorFields(content: EditorContent, drawer: NonNullable<DrawerState>): EditorFormState {
+  const item = drawer.id ? (content[drawer.collection] as Array<Record<string, unknown>>).find((entry) => entry.id === drawer.id) : undefined;
+  if (drawer.collection === "timeline") return { period: String(item?.period ?? "Agora"), title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), description: String(item?.description ?? ""), category: String(item?.category ?? "Trajetória"), editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "projects") return { title: String(item?.title ?? ""), description: String(item?.description ?? ""), status: String(item?.status ?? "Em andamento"), period: String(item?.period ?? "Em construção"), technologies: Array.isArray(item?.technologies) ? item.technologies.join(", ") : "", body: String(item?.body ?? ""), github: String(item?.github ?? ""), demo: String(item?.demo ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "notes") return { title: String(item?.title ?? ""), body: String(item?.body ?? "<p></p>"), area: String(item?.area ?? "Caderno"), date: String(item?.date ?? ""), tags: Array.isArray(item?.tags) ? item.tags.join(", ") : "", editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "learning") return { title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), year: String(item?.year ?? ""), hours: String(item?.hours ?? ""), category: String(item?.category ?? "Formação"), description: String(item?.description ?? ""), documentPublic: item?.documentPublic === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
+  return { value: String(item?.value ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
+}
+
+function collectionLabel(collection: EditableCollection): string {
+  return collection === "timeline" ? "marco" : collection === "projects" ? "projeto" : collection === "notes" ? "nota" : collection === "learning" ? "formação" : "interesse";
+}
+
+function commaList(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+async function uploadAsset(file: File, kind: "image" | "document", isPublic: boolean, altText: string): Promise<{ id: string; altText: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("kind", kind);
+  form.append("isPublic", String(isPublic));
+  form.append("altText", altText);
+  const response = await fetch("/api/assets", { method: "POST", body: form });
+  const payload = await response.json() as { asset?: { id: string; altText: string }; error?: string };
+  if (!response.ok || !payload.asset) throw new Error(payload.error ?? "Não foi possível enviar o arquivo.");
+  return payload.asset;
 }
 
 export default function HomeExperience() {
@@ -611,8 +1056,120 @@ export default function HomeExperience() {
     if (typeof window === "undefined") return "/";
     return normalizeRoute(window.location.pathname);
   });
+  const [content, setContent] = useState<EditorContent>(() => seedEditorContent());
+  const [ownerAvailable, setOwnerAvailable] = useState(false);
+  const [editMode, setEditModeState] = useState(false);
+  const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
+  const canEdit = ownerAvailable && editMode;
+
+  useEffect(() => {
+    let active = true;
+    const bootstrap = async () => {
+      try {
+        const sessionResponse = await fetch("/api/session", { cache: "no-store" });
+        const session = await sessionResponse.json() as { canEdit?: boolean };
+        const canOwnerEdit = session.canEdit === true;
+        const requestedEdit = new URLSearchParams(window.location.search).get("edit") === "1";
+        if (active) {
+          setOwnerAvailable(canOwnerEdit);
+          setEditModeState(canOwnerEdit && requestedEdit);
+        }
+
+        const contentResponse = await fetch(`/api/content${canOwnerEdit && requestedEdit ? "?editor=1" : ""}`, { cache: "no-store" });
+        if (contentResponse.ok) {
+          const payload = await contentResponse.json() as { content?: EditorContent };
+          if (active && payload.content) setContent(payload.content);
+        }
+      } catch {
+        // The static seed remains available when the local preview has no D1 binding.
+      }
+    };
+    void bootstrap();
+    return () => { active = false; };
+  }, []);
+
+  const enterEditMode = async () => {
+    if (!ownerAvailable) return;
+    setStatusMessage("Carregando conteúdo privado…");
+    const response = await fetch("/api/content?editor=1", { cache: "no-store" });
+    const payload = await response.json() as { content?: EditorContent; error?: string };
+    if (!response.ok || !payload.content) {
+      setStatusMessage(payload.error ?? "Não foi possível abrir o editor.");
+      return;
+    }
+    setContent(payload.content);
+    setEditModeState(true);
+    window.history.replaceState({}, "", `${window.location.pathname}?edit=1`);
+    setStatusMessage("Conteúdo privado carregado.");
+  };
+
+  const viewAsVisitor = async () => {
+    setEditModeState(false);
+    setDrawer(null);
+    window.history.replaceState({}, "", window.location.pathname);
+    try {
+      const response = await fetch("/api/content", { cache: "no-store" });
+      const payload = await response.json() as { content?: EditorContent };
+      if (response.ok && payload.content) setContent(payload.content);
+      else setContent((current) => publicEditorContent(current));
+    } catch {
+      setContent((current) => publicEditorContent(current));
+    }
+  };
+
+  const saveItem = async (collection: EditableCollection, id: string | undefined, payload: Record<string, unknown>) => {
+    const response = await fetch(id ? `/api/content?collection=${collection}&id=${encodeURIComponent(id)}` : "/api/content", {
+      method: id ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(id ? payload : { collection, item: payload }),
+    });
+    const result = await response.json() as { content?: EditorContent; error?: string };
+    if (!response.ok || !result.content) throw new Error(result.error ?? "Não foi possível salvar o item.");
+    setContent(result.content);
+    setDrawer(null);
+    setStatusMessage("Alteração salva.");
+  };
+
+  const hideItem = async (collection: EditableCollection, id: string) => {
+    const response = await fetch(`/api/content?collection=${collection}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const result = await response.json() as { content?: EditorContent; error?: string };
+    if (!response.ok || !result.content) {
+      setStatusMessage(result.error ?? "Não foi possível ocultar o item.");
+      return;
+    }
+    setContent(result.content);
+    setDrawer(null);
+    setStatusMessage("Item ocultado.");
+  };
+
+  const reorder = async (collection: EditableCollection, orderedIds: string[]) => {
+    const response = await fetch("/api/content", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collection, orderedIds }) });
+    const result = await response.json() as { content?: EditorContent; error?: string };
+    if (!response.ok || !result.content) {
+      setStatusMessage(result.error ?? "Não foi possível reordenar.");
+      return;
+    }
+    setContent(result.content);
+    setStatusMessage("Ordem atualizada.");
+  };
+
+  const saveIdentity = async (field: "description", value: string) => {
+    const response = await fetch("/api/content?collection=identity&id=primary", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
+    const result = await response.json() as { content?: EditorContent; error?: string };
+    if (!response.ok || !result.content) {
+      setStatusMessage(result.error ?? "Não foi possível salvar o texto.");
+      return;
+    }
+    setContent(result.content);
+    setStatusMessage("Texto salvo.");
+  };
+
+  const signOut = () => {
+    window.location.href = `/signout-with-chatgpt?return_to=${encodeURIComponent(window.location.pathname)}`;
+  };
 
   const navigate = (nextRoute: Route) => {
     window.history.pushState({}, "", nextRoute);
@@ -677,11 +1234,34 @@ export default function HomeExperience() {
   else if (route === "/contato") page = <ContactPage onNavigate={navigate} />;
   else page = <HomePage onNavigate={navigate} />;
 
+  const editorController: EditorController = {
+    content,
+    ownerAvailable,
+    editMode,
+    canEdit,
+    drawer,
+    statusMessage,
+    openEditor: (collection, id) => setDrawer({ collection, id }),
+    closeEditor: () => setDrawer(null),
+    enterEditMode,
+    viewAsVisitor,
+    signOut,
+    saveItem,
+    hideItem,
+    reorder,
+    saveIdentity,
+    setStatusMessage,
+  };
+
   return (
-    <div className="site-app">
-      <SiteHeader key={route} route={route} onNavigate={navigate} />
-      <main className="page-shell" ref={pageRef}>{page}</main>
-      <SiteFooter onNavigate={navigate} />
-    </div>
+    <EditorContext.Provider value={editorController}>
+      <div className="site-app">
+        <SiteHeader key={route} route={route} onNavigate={navigate} />
+        <main className="page-shell" ref={pageRef}>{page}</main>
+        <SiteFooter onNavigate={navigate} />
+        <OwnerBar />
+        <EditorDrawer />
+      </div>
+    </EditorContext.Provider>
   );
 }

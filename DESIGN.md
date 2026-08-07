@@ -44,6 +44,8 @@ O total ocupa `10 + 7 + 4 + 3 = 24` células, exatamente as `12 × 2` disponíve
 - Títulos com pequenas imagens inline para introduzir variação editorial.
 - Carrossel manual de perguntas em aberto, com controles acessíveis.
 - Footer de baixa densidade, sem redes sociais ou contatos inventados.
+- Camada editorial contextual: barra discreta do proprietário, ações “Editar” junto ao item relevante e drawers em painel lateral; ela não altera o layout quando o visitante não está autorizado.
+- “Visualizar como visitante” remove barra, botões, badges de rascunho e interesses de administração antes de recarregar a coleção pública.
 
 ## Movimento
 
@@ -56,3 +58,11 @@ Desktop usa composição assimétrica e grid denso. Tablet reduz o bento para se
 ## Acessibilidade
 
 O projeto usa landmarks semânticos, headings hierárquicos, alt text nas imagens, `aria-label` nos controles, `aria-current` na rota ativa, foco visível, contraste forte nos CTAs e respeito à redução de movimento.
+
+## Modo editorial
+
+- A entrada é `/edit`; após autenticação válida, o usuário retorna à mesma página pública com `?edit=1`.
+- O editor prioriza mobile: no celular o drawer vira uma folha inferior, os campos ocupam uma coluna e a barra do proprietário oferece alvos confortáveis.
+- Formulários distinguem claramente rascunho, publicado e oculto. Ações destrutivas preferem ocultar o item e pedem confirmação.
+- Notas têm rich text limitado a headings, negrito, itálico, link, citação, lista e código. O preview e a listagem reutilizam a linguagem do site, sem abrir uma dashboard paralela.
+- Uploads têm áreas de clique e arrastar. Capas públicas usam a rota protegida por metadata; documentos ficam privados salvo escolha explícita.

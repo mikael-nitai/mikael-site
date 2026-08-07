@@ -11,6 +11,8 @@ Este é o site pessoal de Mikael, um estudante de Física com ênfase em Astrof�
 - Fazer o site envelhecer bem: novas pesquisas, textos, projetos e atividades devem caber sem redesenho estrutural.
 - Preservar uma atmosfera noturna, editorial e contemplativa inspirada em Astronomia.
 - Manter desktop e mobile como experiências igualmente importantes.
+- O modo público deve permanecer limpo: nenhum controle editorial aparece para visitantes.
+- O modo de edição nativo fica em `/edit`, usa autenticação ChatGPT e autorização server-side de um único proprietário. Não criar contas públicas, senhas no código, URLs-secretas ou uma dashboard separada.
 
 ## Regras de conteúdo e privacidade
 
@@ -19,6 +21,8 @@ Este é o site pessoal de Mikael, um estudante de Física com ênfase em Astrof�
 - Não publicar CPF, RG, matrícula, telefone, endereço, horários, localização rotineira, documentos integrais ou dados sensíveis.
 - Não inventar e-mails, perfis sociais ou links externos.
 - Certificados podem ter metadados públicos, mas o documento original permanece privado por padrão.
+- Conteúdo editável persistido deve usar D1; imagens e documentos devem usar R2. Documentos de formação só podem virar públicos por escolha explícita.
+- Toda rota de escrita deve verificar a identidade do proprietário no servidor, independentemente de `editMode` no cliente.
 
 ## Identidade visual
 
@@ -36,6 +40,7 @@ Este é o site pessoal de Mikael, um estudante de Física com ênfase em Astrof�
 4. Preservar acessibilidade, foco visível, HTML semântico, alt text e navegação por teclado.
 5. Executar typecheck, lint, testes e build antes de considerar a alteração pronta.
 6. Revisar mobile, overflow horizontal, links e qualquer conteúdo que possa parecer inventado.
+7. Para mudanças editoriais, validar visitante, proprietário, persistência, privacidade de arquivos e retorno ao layout público.
 
 ## Critérios de qualidade
 

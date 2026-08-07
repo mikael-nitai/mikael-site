@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getRuntimeEnv } from "../lib/runtime";
 
 export type ChatGPTUser = {
   userId: string;
@@ -46,6 +47,22 @@ export async function requireChatGPTUser(
   if (user) return user;
 
   redirect(chatGPTSignInPath(returnTo));
+}
+
+export function isOwnerUser(user: ChatGPTUser | null): boolean {
+  const ownerUserId = getRuntimeEnv().MIKAEL_OWNER_USER_ID;
+  return Boolean(user && ownerUserId && user.userId === ownerUserId);
+}
+
+export async function getOwnerChatGPTUser(): Promise<ChatGPTUser | null> {
+  const user = await getChatGPTUser();
+  return isOwnerUser(user) ? user : null;
+}
+
+export async function requireOwner(returnTo: string): Promise<ChatGPTUser> {
+  const user = await requireChatGPTUser(returnTo);
+  if (!isOwnerUser(user)) redirect("/");
+  return user;
 }
 
 export function chatGPTSignInPath(returnTo: string): string {

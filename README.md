@@ -12,7 +12,7 @@ O projeto é um espaço pessoal para registrar formação acadêmica, projetos, 
 - Vinext/Vite com saída compatível com Cloudflare Workers
 - GSAP + ScrollTrigger para movimento discreto
 - CSS próprio para a identidade visual
-- Conteúdo centralizado em `content/siteData.ts`
+- Conteúdo inicial centralizado em `content/siteData.ts`; conteúdo editorial salvo em D1 após a primeira publicação.
 
 ## Executar
 
@@ -46,7 +46,15 @@ O teste renderiza o HTML do worker e verifica que a página real substituiu o st
 
 ## Conteúdo
 
-Para adicionar uma entrada, edite primeiro `content/siteData.ts`. A interface consome os arrays centralizados em vez de espalhar fatos biográficos pelos componentes. Não adicione datas, instituições, prêmios, certificados, e-mails ou redes sociais sem confirmação.
+O conteúdo inicial continua em `content/siteData.ts` como seed honesto. Em produção, o proprietário usa `/edit` para entrar com ChatGPT e editar pelo próprio site; visitantes nunca recebem controles nem permissão de escrita. Notas, projetos, marcos, formação e interesses são persistidos em D1. Imagens e documentos passam por R2; documentos de formação são privados por padrão.
+
+## Modo de edição nativo
+
+- `/edit` exige autenticação ChatGPT e autorização server-side do único proprietário configurado no ambiente.
+- A barra do proprietário aparece somente para a conta autorizada; “Visualizar como visitante” remove a camada editorial e recarrega apenas o conteúdo público.
+- Textos curtos podem ser editados inline. Projetos, notas, marcos, formações e interesses usam drawers contextuais com estados de rascunho, publicado e oculto.
+- O editor de notas oferece rich text leve, capa opcional e upload por clique ou arrastar; o resumo e o tempo de leitura são derivados do texto.
+- APIs de escrita rejeitam visitantes e contas autenticadas que não sejam o proprietário. Assets privados exigem a mesma autorização em cada leitura.
 
 ## Publicação
 
