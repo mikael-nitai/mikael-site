@@ -777,7 +777,7 @@ function SiteFooter({ onNavigate }: { onNavigate: (href: Route) => void }) {
       <div className="container footer-bottom">
         <span>© {new Date().getFullYear()} Mikael</span>
         <span>Feito com curiosidade e tempo.</span>
-        {editor?.ownerAvailable && !editor.editMode ? <button type="button" className="owner-entry" onClick={() => void editor.enterEditMode()}>Editar site</button> : null}
+        {!editor?.editMode ? <a className="owner-entry" href="/edit">Editar site</a> : null}
       </div>
     </footer>
   );

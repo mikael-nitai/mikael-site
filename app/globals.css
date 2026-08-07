@@ -333,7 +333,7 @@ h3 { font-size: clamp(1.15rem, 1.5vw, 1.45rem); line-height: 1.18; }
 .button-quiet:hover { border-color: var(--line-strong); background: rgba(255, 255, 255, 0.05); }
 .button-danger { border: 1px solid rgba(255, 148, 161, 0.38); background: rgba(120, 35, 55, 0.2); color: #ffb3bd; }
 .button-danger:hover { border-color: #ffabb8; background: rgba(120, 35, 55, 0.34); }
-.owner-entry { padding: 0.35rem 0.7rem; }
+.owner-entry { display: inline-flex; align-items: center; justify-content: center; padding: 0.35rem 0.7rem; white-space: nowrap; }
 .owner-bar { position: fixed; z-index: 60; right: 1rem; bottom: 1rem; left: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: min(100% - 2rem, 58rem); margin: 0 auto; padding: 0.75rem 0.85rem 0.75rem 1rem; border: 1px solid rgba(185, 168, 255, 0.4); border-radius: 0.85rem; background: rgba(7, 14, 29, 0.94); box-shadow: 0 1.4rem 4rem rgba(0, 0, 0, 0.42); backdrop-filter: blur(18px); }
 .owner-bar > span { display: grid; gap: 0.12rem; }
 .owner-bar strong { font-family: var(--serif); font-size: 1rem; font-weight: 400; }
@@ -395,11 +395,8 @@ h3 { font-size: clamp(1.15rem, 1.5vw, 1.45rem); line-height: 1.18; }
   .narrow-container { width: min(100% - 3rem, 1040px); }
   .hero-grid { gap: 3rem; }
   .hero-copy h1 { font-size: clamp(5.5rem, 13vw, 8.8rem); }
-  .bento-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .trajectory-card { grid-column: span 3; grid-row: span 2; }
-  .projects-card { grid-column: span 3; grid-row: span 1; }
-  .notebook-card { grid-column: span 2; grid-row: span 1; }
-  .learning-card { grid-column: span 1; grid-row: span 1; }
+  .bento-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; }
+  .trajectory-card, .projects-card, .notebook-card, .learning-card { grid-column: span 1; grid-row: span 1; }
   .project-mini-card { grid-template-columns: 5.8rem minmax(0, 1fr); }
   .learning-row { grid-template-columns: 1.8rem minmax(0, 1fr); }
   .learning-year { grid-column: 2; }

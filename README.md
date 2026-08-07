@@ -50,7 +50,7 @@ O conteúdo inicial continua em `content/siteData.ts` como seed honesto. Em prod
 
 ## Modo de edição nativo
 
-- `/edit` exige autenticação ChatGPT e autorização server-side do único proprietário configurado no ambiente.
+- `/edit` exige autenticação ChatGPT e autorização server-side do único proprietário configurado no ambiente; a conta é reconhecida pelo ID do usuário e pelo e-mail autorizado como fallback de compatibilidade.
 - A barra do proprietário aparece somente para a conta autorizada; “Visualizar como visitante” remove a camada editorial e recarrega apenas o conteúdo público.
 - Textos curtos podem ser editados inline. Projetos, notas, marcos, formações e interesses usam drawers contextuais com estados de rascunho, publicado e oculto.
 - O editor de notas oferece rich text leve, capa opcional e upload por clique ou arrastar; o resumo e o tempo de leitura são derivados do texto.

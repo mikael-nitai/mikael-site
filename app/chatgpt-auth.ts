@@ -50,8 +50,15 @@ export async function requireChatGPTUser(
 }
 
 export function isOwnerUser(user: ChatGPTUser | null): boolean {
-  const ownerUserId = getRuntimeEnv().MIKAEL_OWNER_USER_ID;
-  return Boolean(user && ownerUserId && user.userId === ownerUserId);
+  const runtime = getRuntimeEnv();
+  const ownerUserId = runtime.MIKAEL_OWNER_USER_ID?.trim();
+  const ownerEmail = runtime.MIKAEL_OWNER_EMAIL?.trim().toLowerCase();
+  if (!user) return false;
+
+  return Boolean(
+    (ownerUserId && user.userId === ownerUserId) ||
+    (ownerEmail && user.email.trim().toLowerCase() === ownerEmail),
+  );
 }
 
 export async function getOwnerChatGPTUser(): Promise<ChatGPTUser | null> {
