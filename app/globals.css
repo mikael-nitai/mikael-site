@@ -242,6 +242,7 @@ h3 { font-size: clamp(1.15rem, 1.5vw, 1.45rem); line-height: 1.18; }
 .study-stack { display: grid; gap: 1rem; }
 .study-card { display: grid; grid-template-columns: minmax(10rem, 0.8fr) minmax(0, 1fr); min-height: 20rem; overflow: hidden; border: 1px solid var(--line); border-radius: 0.9rem; background: rgba(7, 18, 32, 0.78); transition: border-color 300ms ease, transform 300ms ease; }
 .study-card:hover { border-color: var(--line-strong); transform: translateY(-4px); }
+.study-card-reveal { opacity: 1; }
 .study-card-image { min-height: 100%; overflow: hidden; background: #0c1930; }
 .study-card-image img { opacity: 0.78; }
 .study-card-copy { display: flex; flex-direction: column; justify-content: center; padding: clamp(1.35rem, 3vw, 3rem); }
@@ -278,8 +279,12 @@ h3 { font-size: clamp(1.15rem, 1.5vw, 1.45rem); line-height: 1.18; }
 .page-intro { max-width: 63rem; margin-bottom: clamp(4rem, 9vw, 8rem); }
 .page-intro h1 { max-width: 58rem; margin-top: 1rem; font-size: clamp(3.3rem, 7.2vw, 7.5rem); line-height: 0.94; }
 .page-intro-copy { max-width: 39rem; margin-top: 1.8rem; color: var(--ink-soft); font-size: clamp(1.02rem, 1.3vw, 1.2rem); line-height: 1.7; }
+.page-intro-copy, .overview-description, .closing-copy { white-space: pre-line; }
 .page-intro-center { margin-right: auto; margin-left: auto; text-align: center; }
 .page-intro-center .page-intro-copy { margin-right: auto; margin-left: auto; }
+
+.about-page .page-intro { max-width: 72rem; }
+.about-page .page-intro-copy { max-width: 58rem; }
 
 .about-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(16rem, 0.75fr); gap: 1.2rem; }
 .editorial-panel, .full-timeline-panel, .journal-list, .formation-list, .privacy-panel, .contact-card, .markdown-note { border: 1px solid var(--line); border-radius: 0.95rem; background: rgba(8, 18, 32, 0.8); }
@@ -310,6 +315,11 @@ h3 { font-size: clamp(1.15rem, 1.5vw, 1.45rem); line-height: 1.18; }
 .markdown-note p:not(.eyebrow), .privacy-panel p:not(.eyebrow), .contact-card > p:not(.eyebrow) { max-width: 35rem; margin-top: 0.9rem; color: var(--ink-soft); font-size: 0.9rem; }
 .contact-card h2 { margin-top: 0.9rem; }
 .contact-card .button { margin-top: 1.8rem; }
+.contact-list { display: grid; gap: 1rem; }
+.contact-card-entry { margin-top: 0; }
+.contact-value { display: block; margin-top: 1rem; color: var(--ink); font-family: var(--serif); font-size: clamp(1.5rem, 3vw, 2.4rem); line-height: 1.05; overflow-wrap: anywhere; }
+a.contact-value:hover { color: var(--violet); }
+.contact-card-entry > p:not(.eyebrow) { margin-top: 0.75rem; }
 
 /* Owner-only editorial layer. These selectors are inert for visitors. */
 .editor-line { display: flex; align-items: center; justify-content: space-between; gap: 0.65rem; }

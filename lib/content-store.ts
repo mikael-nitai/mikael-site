@@ -68,11 +68,23 @@ function parseEditorContent(payload: string): EditorContent {
       ...seed,
       ...parsed,
       identity: { ...seed.identity, ...(parsed.identity ?? {}) },
+      home: { ...seed.home, ...(parsed.home ?? {}) },
+      about: { ...seed.about, ...(parsed.about ?? {}) },
+      contact: { ...seed.contact, ...(parsed.contact ?? {}) },
       timeline: Array.isArray(parsed.timeline) ? parsed.timeline : seed.timeline,
       projects: Array.isArray(parsed.projects) ? parsed.projects : seed.projects,
       notes: Array.isArray(parsed.notes) ? parsed.notes : seed.notes,
       learning: Array.isArray(parsed.learning) ? parsed.learning : seed.learning,
       interests: Array.isArray(parsed.interests) ? parsed.interests : seed.interests,
+      questions: Array.isArray(parsed.questions)
+        ? parsed.questions.map((question, index) => ({
+          ...seed.questions[index % seed.questions.length],
+          ...question,
+          image: question.image || seed.questions[index % seed.questions.length].image,
+          imageAlt: question.imageAlt || seed.questions[index % seed.questions.length].imageAlt,
+        }))
+        : seed.questions,
+      contacts: Array.isArray(parsed.contacts) ? parsed.contacts : seed.contacts,
       tools: Array.isArray(parsed.tools) ? parsed.tools : seed.tools,
     };
   } catch {

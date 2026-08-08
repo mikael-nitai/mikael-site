@@ -17,10 +17,11 @@ import {
   publicEditorContent,
   seedEditorContent,
   type EditableCollection,
+  type EditablePage,
   type EditorContent,
   type EditorialStatus,
 } from "../../content/editorial";
-import { siteData, type LearningEntry, type NoteEntry, type ProjectEntry, type TimelineEntry } from "../../content/siteData";
+import { type LearningEntry, type NoteEntry, type ProjectEntry, type TimelineEntry } from "../../content/siteData";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -38,16 +39,10 @@ const routes: Route[] = [
 
 const navItems: Array<{ label: string; href: Route }> = [
   { label: "Sobre", href: "/sobre" },
-  { label: "Trajetória", href: "/trajetoria" },
+  { label: "Meu caminho", href: "/trajetoria" },
   { label: "Projetos", href: "/projetos" },
   { label: "Caderno", href: "/caderno" },
   { label: "Contato", href: "/contato" },
-];
-
-const studyImages = [
-  "https://picsum.photos/seed/quiet-observation/1200/900",
-  "https://picsum.photos/seed/deep-field/1200/900",
-  "https://picsum.photos/seed/analog-notes/1200/900",
 ];
 
 type DrawerState = { collection: EditableCollection; id?: string } | null;
@@ -68,6 +63,7 @@ type EditorController = {
   hideItem: (collection: EditableCollection, id: string) => Promise<void>;
   reorder: (collection: EditableCollection, orderedIds: string[]) => Promise<void>;
   saveIdentity: (field: "description", value: string) => Promise<void>;
+  savePage: (page: EditablePage, fields: Record<string, string>) => Promise<void>;
   setStatusMessage: (value: string | null) => void;
 };
 
@@ -187,9 +183,9 @@ function PageIntro({
   description,
   align = "left",
 }: {
-  eyebrow: string;
-  title: string;
-  description: string;
+  eyebrow: ReactNode;
+  title: ReactNode;
+  description: ReactNode;
   align?: "left" | "center";
 }) {
   return (
@@ -398,13 +394,16 @@ function InterestEditor() {
   );
 }
 
-function QuestionCarousel() {
+function QuestionCarousel({ questions }: { questions: EditorContent["questions"] }) {
+  const editor = useEditor();
   const [activeQuestion, setActiveQuestion] = useState(0);
-  const question = siteData.questions[activeQuestion];
+  const question = questions[activeQuestion] ?? questions[0];
 
   const move = (direction: -1 | 1) => {
-    setActiveQuestion((current) => (current + direction + siteData.questions.length) % siteData.questions.length);
+    setActiveQuestion((current) => (current + direction + questions.length) % questions.length);
   };
+
+  if (!question) return null;
 
   return (
     <section className="question-carousel" aria-labelledby="questions-title">
@@ -413,11 +412,14 @@ function QuestionCarousel() {
         <h2 id="questions-title">Algumas perguntas ficam abertas por mais tempo.</h2>
       </div>
       <div className="question-carousel-stage">
-        <p className="question-count" aria-label={`Pergunta ${activeQuestion + 1} de ${siteData.questions.length}`}>
-          {String(activeQuestion + 1).padStart(2, "0")} / {String(siteData.questions.length).padStart(2, "0")}
+        <p className="question-count" aria-label={`Pergunta ${activeQuestion + 1} de ${questions.length}`}>
+          {String(activeQuestion + 1).padStart(2, "0")} / {String(questions.length).padStart(2, "0")}
         </p>
         <div className="question-carousel-copy" aria-live="polite">
-          <h3>{question.title}</h3>
+          <div className="editor-line">
+            <h3>{question.title}</h3>
+            {editor?.canEdit ? <ContextEditButton onClick={() => editor.openEditor("questions", question.id)} /> : null}
+          </div>
           <p>{question.text}</p>
         </div>
         <div className="carousel-controls">
@@ -432,13 +434,13 @@ function QuestionCarousel() {
 function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
   const editor = useEditor();
   const content = editor?.content ?? seedEditorContent();
+  const home = content.home;
   return (
     <>
       <section className="hero chapter" id="inicio">
         <div className="star-field" aria-hidden="true" />
         <div className="container hero-grid">
           <div className="hero-copy hero-reveal">
-            <p className="hero-kicker">{content.identity.role}</p>
             <h1>Mikael</h1>
             <p className="hero-lead"><InlineTextEditor value={content.identity.description} label="Editar apresentação" onSave={(value) => editor?.saveIdentity("description", value) ?? Promise.resolve()} /></p>
             <div className="hero-actions">
@@ -450,8 +452,8 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           <div className="hero-visual image-reveal">
             <div className="hero-image-frame">
               <img
-                src="https://picsum.photos/seed/night-sky-observatory/1600/1300"
-                alt="Céu noturno sobre uma paisagem escura, referência visual para a página pessoal"
+                src={home.heroImage}
+                alt={home.heroImageAlt}
                 fetchPriority="high"
               />
               <div className="celestial-overlay" aria-hidden="true">
@@ -480,9 +482,9 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           <div className="section-heading reveal">
             <div>
               <p className="eyebrow">O que estou reunindo</p>
-              <h2>Uma página para acompanhar o caminho.</h2>
+              <h2><InlineTextEditor value={home.overviewTitle} label="Editar título" onSave={(value) => editor?.savePage("home", { overviewTitle: value }) ?? Promise.resolve()} /></h2>
             </div>
-            <p>O site começa pequeno de propósito: algumas áreas honestas, prontas para crescer conforme a formação e os projetos ganham corpo.</p>
+            <p className="overview-description"><InlineTextEditor value={home.overviewDescription} label="Editar texto" onSave={(value) => editor?.savePage("home", { overviewDescription: value }) ?? Promise.resolve()} /></p>
           </div>
 
           <div className="bento-grid">
@@ -490,13 +492,13 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
               <div className="card-heading">
                 <div>
                   <p className="eyebrow">Percurso</p>
-                  <h2>Trajetória acadêmica</h2>
+                  <h2>Caminho</h2>
                 </div>
                 <span className="card-index" aria-hidden="true">01</span>
               </div>
               <Timeline entries={content.timeline} compact />
               <EditorAddButton collection="timeline">Adicionar marco</EditorAddButton>
-              <ArrowLink href="/trajetoria" onNavigate={onNavigate}>Ver toda a trajetória</ArrowLink>
+              <ArrowLink href="/trajetoria" onNavigate={onNavigate}>Ver todo o caminho</ArrowLink>
             </article>
 
             <article className="bento-card projects-card reveal" id="projetos-resumo">
@@ -517,7 +519,7 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
               <div className="card-heading">
                 <div>
                   <p className="eyebrow">Registro</p>
-                  <h2>Notas que vão ganhar corpo <span className="inline-title-image" aria-hidden="true" /></h2>
+                  <h2>Caderno <span className="inline-title-image" aria-hidden="true" /></h2>
                 </div>
               </div>
               <div className="note-list">
@@ -562,31 +564,35 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
             <ArrowLink href="/caderno" onNavigate={onNavigate}>Conhecer o caderno</ArrowLink>
           </div>
           <div className="study-stack">
-            {siteData.questions.map((question, index) => (
-              <article className="study-card image-reveal" key={question.title}>
+            {content.questions.map((question) => (
+              <article className="study-card study-card-reveal" key={question.id}>
                 <div className="study-card-image">
-                  <img src={studyImages[index]} alt="Textura visual abstrata para uma pergunta de estudo" loading="lazy" />
+                  <img src={question.image} alt={question.imageAlt} loading="lazy" />
                 </div>
                 <div className="study-card-copy">
-                  <p className="eyebrow">Pergunta em aberto</p>
+                  <div className="editor-line">
+                    <p className="eyebrow">Pergunta em aberto</p>
+                    {editor?.canEdit ? <ContextEditButton onClick={() => editor.openEditor("questions", question.id)} /> : null}
+                  </div>
                   <h3>{question.title}</h3>
                   <p>{question.text}</p>
                 </div>
               </article>
             ))}
+            <EditorAddButton collection="questions">Adicionar pergunta</EditorAddButton>
           </div>
         </div>
         <div className="container">
-          <QuestionCarousel />
+          <QuestionCarousel questions={content.questions} />
         </div>
       </section>
 
       <section className="chapter closing-chapter">
         <div className="container closing-cta reveal">
-          <p className="eyebrow">Próxima página</p>
-          <h2>O próximo registro começa quando houver algo real para contar.</h2>
-          <p>Por enquanto, este site é uma base tranquila: uma forma de acompanhar o que estou aprendendo sem apressar conclusões.</p>
-          <ArrowLink href="/sobre" onNavigate={onNavigate} className="button button-primary">Conhecer o espaço</ArrowLink>
+          <p className="eyebrow"><InlineTextEditor value={home.closingEyebrow} label="Editar chamada" onSave={(value) => editor?.savePage("home", { closingEyebrow: value }) ?? Promise.resolve()} /></p>
+          <h2><InlineTextEditor value={home.closingTitle} label="Editar título" onSave={(value) => editor?.savePage("home", { closingTitle: value }) ?? Promise.resolve()} /></h2>
+          <p className="closing-copy"><InlineTextEditor value={home.closingDescription} label="Editar texto" onSave={(value) => editor?.savePage("home", { closingDescription: value }) ?? Promise.resolve()} /></p>
+          <ArrowLink href="/sobre" onNavigate={onNavigate} className="button button-primary"><InlineTextEditor value={home.closingActionLabel} label="Editar botão" onSave={(value) => editor?.savePage("home", { closingActionLabel: value }) ?? Promise.resolve()} /></ArrowLink>
         </div>
       </section>
     </>
@@ -597,27 +603,13 @@ function AboutPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
   const editor = useEditor();
   const content = editor?.content ?? seedEditorContent();
   return (
-    <div className="inner-page chapter">
+    <div className="inner-page about-page chapter">
       <div className="container">
         <PageIntro
           eyebrow="Sobre"
-          title="Uma formação em andamento, vista de perto."
-          description="Sou estudante do bacharelado em Física com ênfase em Astrofísica na UFS. Este site acompanha o processo de aprender construindo, registrando o que já existe e deixando espaço para o que ainda vai aparecer."
+          title={<InlineTextEditor value={content.about.title} label="Editar título" onSave={(value) => editor?.savePage("about", { title: value }) ?? Promise.resolve()} />}
+          description={<InlineTextEditor value={content.about.body} label="Editar texto" onSave={(value) => editor?.savePage("about", { body: value }) ?? Promise.resolve()} />}
         />
-        <div className="about-layout">
-          <article className="editorial-panel reveal">
-            <p className="eyebrow">Como penso este espaço</p>
-            <h2>Curiosidade antes de performance.</h2>
-            <p><InlineTextEditor value={content.identity.description} label="Editar texto" onSave={(value) => editor?.saveIdentity("description", value) ?? Promise.resolve()} /></p>
-            <p>Física e Astrofísica são o centro acadêmico. Programação, inteligência artificial e ferramentas digitais entram como interesses e instrumentos em desenvolvimento.</p>
-          </article>
-          <article className="editorial-panel editorial-panel-dark reveal">
-            <p className="eyebrow">Ferramentas que uso e estou aprendendo</p>
-            <ul className="tool-list">
-              {content.tools.map((tool) => <li key={tool}>{tool}</li>)}
-            </ul>
-          </article>
-        </div>
         <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate}>Voltar ao início</ArrowLink></div>
       </div>
     </div>
@@ -631,7 +623,7 @@ function TrajectoryPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
     <div className="inner-page chapter">
       <div className="container narrow-container">
         <PageIntro
-          eyebrow="Trajetória"
+          eyebrow="Meu caminho"
           title="Um caminho que ainda está começando."
           description="A linha do tempo começa com os poucos marcos que fazem sentido agora. Novos eventos entram quando existirem, não para preencher espaço."
         />
@@ -731,20 +723,39 @@ function FormationPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 }
 
 function ContactPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
+  const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
+  const contact = content.contact;
   return (
     <div className="inner-page chapter contact-page">
       <div className="container narrow-container">
         <PageIntro
-          eyebrow="Contato"
-          title="Um canal público entra aqui quando estiver definido."
-          description="Nenhum e-mail ou perfil social foi informado para publicação. Por isso, esta página não inventa um contato: ela deixa o lugar pronto para receber um no futuro."
+          eyebrow={<InlineTextEditor value={contact.eyebrow} label="Editar chamada" onSave={(value) => editor?.savePage("contact", { eyebrow: value }) ?? Promise.resolve()} />}
+          title={<InlineTextEditor value={contact.title} label="Editar título" onSave={(value) => editor?.savePage("contact", { title: value }) ?? Promise.resolve()} />}
+          description={<InlineTextEditor value={contact.description} label="Editar introdução" onSave={(value) => editor?.savePage("contact", { description: value }) ?? Promise.resolve()} />}
         />
-        <div className="contact-card reveal">
-          <p className="eyebrow">Em aberto</p>
-          <h2>Contato a configurar.</h2>
-          <p>Enquanto isso, você pode voltar ao início para conhecer a trajetória, os interesses e a estrutura do site.</p>
-          <ArrowLink href="/" onNavigate={onNavigate} className="button button-outline">Voltar ao início</ArrowLink>
-        </div>
+        {content.contacts.length === 0 ? (
+          <div className="contact-card reveal">
+            <p className="eyebrow"><InlineTextEditor value={contact.emptyEyebrow} label="Editar chamada vazia" onSave={(value) => editor?.savePage("contact", { emptyEyebrow: value }) ?? Promise.resolve()} /></p>
+            <h2><InlineTextEditor value={contact.emptyTitle} label="Editar título vazio" onSave={(value) => editor?.savePage("contact", { emptyTitle: value }) ?? Promise.resolve()} /></h2>
+            <p><InlineTextEditor value={contact.emptyDescription} label="Editar texto vazio" onSave={(value) => editor?.savePage("contact", { emptyDescription: value }) ?? Promise.resolve()} /></p>
+          </div>
+        ) : (
+          <div className="contact-list">
+            {content.contacts.map((entry) => (
+              <article className="contact-card contact-card-entry reveal" key={entry.id}>
+                <div className="editor-line">
+                  <p className="eyebrow">{entry.label}</p>
+                  <span className="card-statuses"><EditorialBadge status={entry.editorialStatus} /><ContextEditButton onClick={() => editor?.openEditor("contacts", entry.id)} /></span>
+                </div>
+                {entry.href ? <a className="contact-value" href={entry.href}>{entry.value}</a> : <p className="contact-value">{entry.value}</p>}
+                {entry.note ? <p>{entry.note}</p> : null}
+              </article>
+            ))}
+          </div>
+        )}
+        <EditorAddButton collection="contacts">Adicionar contato</EditorAddButton>
+        <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate} className="button button-outline"><InlineTextEditor value={contact.backLabel} label="Editar botão" onSave={(value) => editor?.savePage("contact", { backLabel: value }) ?? Promise.resolve()} /></ArrowLink></div>
       </div>
     </div>
   );
@@ -763,7 +774,7 @@ function SiteFooter({ onNavigate }: { onNavigate: (href: Route) => void }) {
           <div>
             <p className="eyebrow">Explorar</p>
             <SiteLink href="/sobre" onNavigate={onNavigate}>Sobre</SiteLink>
-            <SiteLink href="/trajetoria" onNavigate={onNavigate}>Trajetória</SiteLink>
+            <SiteLink href="/trajetoria" onNavigate={onNavigate}>Meu caminho</SiteLink>
             <SiteLink href="/projetos" onNavigate={onNavigate}>Projetos</SiteLink>
           </div>
           <div>
@@ -863,6 +874,8 @@ function EditorDrawerContent({ drawer, editor }: { drawer: NonNullable<DrawerSta
           {drawer.collection === "projects" ? <ProjectFields fields={fields} setField={setField} setCoverFile={setCoverFile} /> : null}
           {drawer.collection === "notes" ? <NoteFields fields={fields} setField={setField} setCoverFile={setCoverFile} /> : null}
           {drawer.collection === "learning" ? <LearningFields fields={fields} setField={setField} setCoverFile={setCoverFile} setDocumentFile={setDocumentFile} /> : null}
+          {drawer.collection === "questions" ? <QuestionFields fields={fields} setField={setField} setCoverFile={setCoverFile} /> : null}
+          {drawer.collection === "contacts" ? <ContactFields fields={fields} setField={setField} /> : null}
           {drawer.collection === "interests" ? <InterestFields fields={fields} setField={setField} /> : null}
 
           {error ? <p className="editor-error" role="alert">{error}</p> : null}
@@ -972,6 +985,31 @@ function InterestFields({ fields, setField }: { fields: EditorFormState; setFiel
   );
 }
 
+function QuestionFields({ fields, setField, setCoverFile }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void; setCoverFile: (file: File | null) => void }) {
+  return (
+    <div className="editor-field-grid">
+      <EditorInput label="Título da pergunta" value={String(fields.title ?? "")} onChange={(value) => setField("title", value)} required />
+      <EditorTextarea label="Texto da pergunta" value={String(fields.text ?? "")} onChange={(value) => setField("text", value)} required />
+      <EditorInput label="Imagem (URL opcional)" type="url" value={String(fields.image ?? "")} onChange={(value) => setField("image", value)} />
+      <EditorInput label="Texto alternativo da imagem" value={String(fields.imageAlt ?? "")} onChange={(value) => setField("imageAlt", value)} />
+      <UploadField label="Imagem da pergunta" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+      <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+    </div>
+  );
+}
+
+function ContactFields({ fields, setField }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void }) {
+  return (
+    <div className="editor-field-grid">
+      <EditorInput label="Nome do canal" value={String(fields.label ?? "")} onChange={(value) => setField("label", value)} required />
+      <EditorInput label="Contato exibido" value={String(fields.value ?? "")} onChange={(value) => setField("value", value)} required />
+      <EditorInput label="Link opcional (https, mailto ou tel)" value={String(fields.href ?? "")} onChange={(value) => setField("href", value)} />
+      <EditorTextarea label="Nota curta" value={String(fields.note ?? "")} onChange={(value) => setField("note", value)} />
+      <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+    </div>
+  );
+}
+
 function EditorInput({ label, value, onChange, required = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: string }) {
   return <label className="editor-field"><span>{label}{required ? " *" : ""}</span><input type={type} value={value} required={required} onChange={(event) => onChange(event.target.value)} /></label>;
 }
@@ -1028,11 +1066,13 @@ function initialEditorFields(content: EditorContent, drawer: NonNullable<DrawerS
   if (drawer.collection === "projects") return { title: String(item?.title ?? ""), description: String(item?.description ?? ""), status: String(item?.status ?? "Em andamento"), period: String(item?.period ?? "Em construção"), technologies: Array.isArray(item?.technologies) ? item.technologies.join(", ") : "", body: String(item?.body ?? ""), github: String(item?.github ?? ""), demo: String(item?.demo ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
   if (drawer.collection === "notes") return { title: String(item?.title ?? ""), body: String(item?.body ?? "<p></p>"), area: String(item?.area ?? "Caderno"), date: String(item?.date ?? ""), tags: Array.isArray(item?.tags) ? item.tags.join(", ") : "", editorialStatus: String(item?.editorialStatus ?? "draft") };
   if (drawer.collection === "learning") return { title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), year: String(item?.year ?? ""), hours: String(item?.hours ?? ""), category: String(item?.category ?? "Formação"), description: String(item?.description ?? ""), documentPublic: item?.documentPublic === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "questions") return { title: String(item?.title ?? ""), text: String(item?.text ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "contacts") return { label: String(item?.label ?? ""), value: String(item?.value ?? ""), href: String(item?.href ?? ""), note: String(item?.note ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
   return { value: String(item?.value ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
 }
 
 function collectionLabel(collection: EditableCollection): string {
-  return collection === "timeline" ? "marco" : collection === "projects" ? "projeto" : collection === "notes" ? "nota" : collection === "learning" ? "formação" : "interesse";
+  return collection === "timeline" ? "marco" : collection === "projects" ? "projeto" : collection === "notes" ? "nota" : collection === "learning" ? "formação" : collection === "questions" ? "pergunta" : collection === "contacts" ? "contato" : "interesse";
 }
 
 function commaList(value: string): string[] {
@@ -1167,6 +1207,17 @@ export default function HomeExperience() {
     setStatusMessage("Texto salvo.");
   };
 
+  const savePage = async (page: EditablePage, fields: Record<string, string>) => {
+    const response = await fetch(`/api/content?collection=${page}&id=primary`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) });
+    const result = await response.json() as { content?: EditorContent; error?: string };
+    if (!response.ok || !result.content) {
+      setStatusMessage(result.error ?? "Não foi possível salvar a página.");
+      return;
+    }
+    setContent(result.content);
+    setStatusMessage("Texto salvo.");
+  };
+
   const signOut = () => {
     window.location.href = `/signout-with-chatgpt?return_to=${encodeURIComponent(window.location.pathname)}`;
   };
@@ -1212,6 +1263,26 @@ export default function HomeExperience() {
       );
     });
 
+    gsap.utils.toArray<HTMLElement>(".study-card-reveal").forEach((element) => {
+      gsap.fromTo(
+        element,
+        { opacity: 0, y: 22 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.72,
+          ease: "power3.out",
+          clearProps: "opacity,transform",
+          scrollTrigger: {
+            trigger: element,
+            start: "top 86%",
+            toggleActions: "play none none none",
+            once: true,
+          },
+        },
+      );
+    });
+
     const pinTarget = pageRef.current?.querySelector<HTMLElement>(".study-stage-pin");
     const pinSection = pageRef.current?.querySelector<HTMLElement>(".study-stage");
     if (pinTarget && pinSection && window.matchMedia("(min-width: 900px)").matches) {
@@ -1250,6 +1321,7 @@ export default function HomeExperience() {
     hideItem,
     reorder,
     saveIdentity,
+    savePage,
     setStatusMessage,
   };
 

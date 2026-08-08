@@ -66,3 +66,8 @@ O projeto usa landmarks semânticos, headings hierárquicos, alt text nas imagen
 - Formulários distinguem claramente rascunho, publicado e oculto. Ações destrutivas preferem ocultar o item e pedem confirmação.
 - Notas têm rich text limitado a headings, negrito, itálico, link, citação, lista e código. O preview e a listagem reutilizam a linguagem do site, sem abrir uma dashboard paralela.
 - Uploads têm áreas de clique e arrastar. Capas públicas usam a rota protegida por metadata; documentos ficam privados salvo escolha explícita.
+## Extensoes recentes
+
+- A pagina de Contato usa a mesma linguagem editorial e troca o estado vazio por cards de canais reais.
+- Perguntas em aberto aceitam imagem editavel e usam entrada one-shot para nao permanecerem com opacidade residual.
+- O modo editorial preserva a composicao publica: controles aparecem somente para o proprietario autenticado.

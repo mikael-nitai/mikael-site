@@ -34,6 +34,46 @@ export type LearningEntry = {
   placeholder?: boolean;
 };
 
+export type QuestionEntry = {
+  title: string;
+  text: string;
+  image: string;
+  imageAlt: string;
+};
+
+export type HomeContent = {
+  heroImage: string;
+  heroImageAlt: string;
+  overviewTitle: string;
+  overviewDescription: string;
+  closingEyebrow: string;
+  closingTitle: string;
+  closingDescription: string;
+  closingActionLabel: string;
+};
+
+export type AboutContent = {
+  title: string;
+  body: string;
+};
+
+export type ContactContent = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  emptyEyebrow: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  backLabel: string;
+};
+
+export type ContactEntry = {
+  label: string;
+  value: string;
+  href?: string;
+  note?: string;
+};
+
 export const siteData = {
   identity: {
     name: "Mikael",
@@ -42,6 +82,34 @@ export const siteData = {
     description:
       "Um espaço pessoal para registrar a formação em andamento, os projetos que começam a tomar forma e as perguntas que continuam abertas.",
   },
+  home: {
+    heroImage: "/mikael-portrait.png",
+    heroImageAlt: "Retrato de Mikael em luz baixa, com fundo escuro",
+    overviewTitle: "Uma página para acompanhar o caminho.",
+    overviewDescription:
+      "Bem vindo. Limpe os pés.\nAqui, reuni despretensiosamente fragmentos de quem sou, já fui, e pretendo ser, se trata de um pequeno projeto para organizar os pensamentos",
+    closingEyebrow: "Sobre",
+    closingTitle: "O próximo registro começa quando houver algo real para contar.",
+    closingDescription:
+      "Por enquanto, este site é uma base tranquila: uma forma de acompanhar o que estou aprendendo sem apressar conclusões.",
+    closingActionLabel: "Abrir espelho",
+  } satisfies HomeContent,
+  about: {
+    title: "Uma formação em andamento, vista de perto.",
+    body:
+      "Sou estudante do bacharelado em Física com ênfase em Astrofísica na UFS. Este site acompanha o processo de aprender construindo, registrando o que já existe e deixando espaço para o que ainda vai aparecer.",
+  } satisfies AboutContent,
+  contact: {
+    eyebrow: "Contato",
+    title: "Um canal público entra aqui quando estiver definido.",
+    description:
+      "Nenhum e-mail ou perfil social foi informado para publicação. Por isso, esta página não inventa um contato: ela deixa o lugar pronto para receber um no futuro.",
+    emptyEyebrow: "Em aberto",
+    emptyTitle: "Contato a configurar.",
+    emptyDescription:
+      "Enquanto isso, você pode voltar ao início para conhecer o caminho, os interesses e a estrutura do site.",
+    backLabel: "Voltar ao início",
+  } satisfies ContactContent,
   timeline: [
     {
       period: "Agora",
@@ -63,7 +131,7 @@ export const siteData = {
       period: "Sempre",
       title: "Curiosidade por natureza",
       description:
-        "Perguntar, investigar respostas e reorganizar o que aprendi faz parte da trajetória tanto quanto qualquer marco formal.",
+        "Perguntar, investigar respostas e reorganizar o que aprendi faz parte do caminho tanto quanto qualquer marco formal.",
       category: "Princípio",
     },
   ] satisfies TimelineEntry[],
@@ -169,16 +237,23 @@ export const siteData = {
     {
       title: "Como uma pergunta vira método?",
       text: "A curiosidade é um começo. O estudo aparece quando a pergunta ganha contexto, fontes e alguma forma de teste.",
+      image: "https://picsum.photos/seed/quiet-observation/1200/900",
+      imageAlt: "Flores alaranjadas iluminadas em uma paisagem de estudo",
     },
     {
       title: "O que a escala muda?",
       text: "Da experiência cotidiana ao céu profundo, mudar a escala costuma mudar também a maneira de descrever o problema.",
+      image: "https://picsum.photos/seed/deep-field/1200/900",
+      imageAlt: "Paisagem ampla usada como metáfora para observar diferentes escalas",
     },
     {
       title: "Onde a tecnologia ajuda a aprender?",
       text: "Programar e automatizar podem organizar o caminho, desde que continuem servindo à compreensão e não apenas ao resultado.",
+      image: "https://picsum.photos/seed/analog-notes/1200/900",
+      imageAlt: "Textura de anotações analógicas para uma pergunta de estudo",
     },
-  ],
+  ] satisfies QuestionEntry[],
+  contacts: [] as ContactEntry[],
 } as const;
 
 export type SiteData = typeof siteData;

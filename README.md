@@ -59,3 +59,9 @@ O conteúdo inicial continua em `content/siteData.ts` como seed honesto. Em prod
 ## Publicação
 
 O projeto foi preparado para publicação via Sites. Depois de um build válido, o fluxo de hosting deve salvar uma versão e fazer o deploy da fonte validada. O arquivo `.openai/hosting.json` guarda somente bindings de infraestrutura; IDs e credenciais são gerenciados pelo conector.
+## Recursos editoriais atuais
+
+- Home, Sobre e Contato permitem editar textos inline dentro do modo `/edit`.
+- Perguntas em aberto aceitam URL ou upload de imagem propria, com texto alternativo.
+- Contato permite criar canais com rotulo, valor, link e nota. O placeholder "Contato a configurar" aparece somente quando nao existe contato publicado.
+- A pagina Sobre usa altura natural e aceita textos longos sem caixas fixas.

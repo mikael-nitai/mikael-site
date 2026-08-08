@@ -1,13 +1,19 @@
 import {
   siteData,
+  type AboutContent,
+  type ContactContent,
+  type ContactEntry,
+  type HomeContent,
   type LearningEntry,
   type NoteEntry,
   type ProjectEntry,
+  type QuestionEntry,
   type TimelineEntry,
 } from "./siteData";
 
 export type EditorialStatus = "draft" | "published" | "hidden";
-export type EditableCollection = "timeline" | "projects" | "notes" | "learning" | "interests";
+export type EditableCollection = "timeline" | "projects" | "notes" | "learning" | "interests" | "questions" | "contacts";
+export type EditablePage = "home" | "about" | "contact";
 
 export type EditorialMeta = {
   id: string;
@@ -38,6 +44,10 @@ export type EditableLearningEntry = LearningEntry & EditorialMeta & {
   documentPublic: boolean;
 };
 
+export type EditableQuestionEntry = QuestionEntry & EditorialMeta & { coverAssetId?: string };
+
+export type EditableContactEntry = ContactEntry & EditorialMeta;
+
 export type EditableInterest = EditorialMeta & {
   value: string;
 };
@@ -51,11 +61,16 @@ export type EditorIdentity = {
 
 export type EditorContent = {
   identity: EditorIdentity;
+  home: HomeContent;
+  about: AboutContent;
+  contact: ContactContent;
   timeline: EditableTimelineEntry[];
   projects: EditableProjectEntry[];
   notes: EditableNoteEntry[];
   learning: EditableLearningEntry[];
   interests: EditableInterest[];
+  questions: EditableQuestionEntry[];
+  contacts: EditableContactEntry[];
   tools: string[];
 };
 
@@ -70,6 +85,9 @@ function meta(prefix: string, index: number): EditorialMeta {
 export function seedEditorContent(): EditorContent {
   return {
     identity: { ...siteData.identity },
+    home: { ...siteData.home },
+    about: { ...siteData.about },
+    contact: { ...siteData.contact },
     timeline: siteData.timeline.map((entry, index) => ({ ...entry, ...meta("timeline", index) })),
     projects: siteData.projects.map((entry, index) => ({ ...entry, ...meta("project", index), body: entry.description })),
     notes: siteData.notes.map((entry, index) => ({
@@ -84,6 +102,8 @@ export function seedEditorContent(): EditorContent {
       documentPublic: false,
     })),
     interests: siteData.interests.map((value, index) => ({ ...meta("interest", index), value })),
+    questions: siteData.questions.map((entry, index) => ({ ...entry, ...meta("question", index) })),
+    contacts: siteData.contacts.map((entry, index) => ({ ...entry, ...meta("contact", index) })),
     tools: [...siteData.tools],
   };
 }
@@ -96,6 +116,8 @@ export function sortEditorContent(content: EditorContent): EditorContent {
     notes: [...content.notes].sort((a, b) => a.order - b.order),
     learning: [...content.learning].sort((a, b) => a.order - b.order),
     interests: [...content.interests].sort((a, b) => a.order - b.order),
+    questions: [...content.questions].sort((a, b) => a.order - b.order),
+    contacts: [...content.contacts].sort((a, b) => a.order - b.order),
   };
 }
 
@@ -110,11 +132,13 @@ export function publicEditorContent(content: EditorContent): EditorContent {
     notes: published(content.notes),
     learning: published(content.learning),
     interests: published(content.interests),
+    questions: published(content.questions),
+    contacts: published(content.contacts),
   });
 }
 
 export function isEditableCollection(value: string | null): value is EditableCollection {
-  return value === "timeline" || value === "projects" || value === "notes" || value === "learning" || value === "interests";
+  return value === "timeline" || value === "projects" || value === "notes" || value === "learning" || value === "interests" || value === "questions" || value === "contacts";
 }
 
 export function isEditorialStatus(value: unknown): value is EditorialStatus {

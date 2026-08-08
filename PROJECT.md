@@ -46,3 +46,9 @@ O projeto usa uma única superfície React com roteamento leve baseado em Histor
 ## Evoluções futuras
 
 Iniciação científica, artigos, apresentações, congressos, monitorias, extensão, novas habilidades e experiências profissionais podem ser adicionados aos arrays de conteúdo ou a novos módulos sem alterar a identidade do shell.
+## Atualizacoes editoriais
+
+- A home usa o retrato fornecido pelo proprietario e mantem os textos centrais editaveis.
+- Perguntas em aberto sao itens editoriais com imagem por URL ou upload R2.
+- A pagina de contato possui estado vazio honesto e lista de canais publicada pelo proprietario; ao publicar o primeiro canal, o placeholder desaparece.
+- A entrada dos cards de perguntas e one-shot: a animacao limpa opacity e transform ao terminar, evitando caixas translúcidas em telas altas.

@@ -97,6 +97,56 @@ export async function PATCH(request: Request): Promise<Response> {
       return Response.json({ error: "Não foi possível salvar a identidade." }, { status: 503 });
     }
   }
+  if ((collection === "home" || collection === "about" || collection === "contact") && id === "primary") {
+    let pageInput: unknown;
+    try {
+      pageInput = await request.json();
+    } catch {
+      return Response.json({ error: "JSON inválido." }, { status: 400 });
+    }
+    if (!isRecord(pageInput)) return Response.json({ error: "Alterações inválidas." }, { status: 400 });
+    try {
+      const content = await loadEditorContent();
+      if (collection === "home") {
+        const home = { ...content.home };
+        const fields = ["overviewTitle", "overviewDescription", "closingEyebrow", "closingTitle", "closingDescription", "closingActionLabel"] as const;
+        for (const field of fields) {
+          if (typeof pageInput[field] === "string") home[field] = pageInput[field].trim();
+        }
+        if (!home.overviewTitle || !home.overviewDescription || !home.closingTitle || !home.closingDescription || !home.closingActionLabel) {
+          return Response.json({ error: "Os textos da página inicial não podem ficar vazios." }, { status: 400 });
+        }
+        const next = { ...content, home };
+        await saveEditorContent(next);
+        return Response.json({ content: next });
+      }
+
+      if (collection === "contact") {
+        const contact = { ...content.contact };
+        const fields = ["eyebrow", "title", "description", "emptyEyebrow", "emptyTitle", "emptyDescription", "backLabel"] as const;
+        for (const field of fields) {
+          if (typeof pageInput[field] === "string") contact[field] = pageInput[field].trim();
+        }
+        if (!contact.eyebrow || !contact.title || !contact.description || !contact.emptyEyebrow || !contact.emptyTitle || !contact.emptyDescription || !contact.backLabel) {
+          return Response.json({ error: "Os textos da página de contato não podem ficar vazios." }, { status: 400 });
+        }
+        const next = { ...content, contact };
+        await saveEditorContent(next);
+        return Response.json({ content: next });
+      }
+
+      const about = { ...content.about };
+      if (typeof pageInput.title === "string") about.title = pageInput.title.trim();
+      if (typeof pageInput.body === "string") about.body = pageInput.body.trim();
+      if (!about.title || !about.body) return Response.json({ error: "O título e o texto da página Sobre não podem ficar vazios." }, { status: 400 });
+      const next = { ...content, about };
+      await saveEditorContent(next);
+      return Response.json({ content: next });
+    } catch (error) {
+      console.error("Falha ao atualizar a página editorial", error);
+      return Response.json({ error: "Não foi possível salvar a página." }, { status: 503 });
+    }
+  }
   if (!isEditableCollection(collection) || !id) {
     return Response.json({ error: "Item inválido." }, { status: 400 });
   }
@@ -274,6 +324,30 @@ function normalizeNewItem(
       },
     };
   }
+  if (collection === "questions") {
+    if (!requiredText(rawItem.title) || !requiredText(rawItem.text)) return { error: "Título e texto da pergunta são obrigatórios." };
+    return {
+      value: {
+        ...base,
+        title: text(rawItem.title),
+        text: text(rawItem.text),
+        image: imageSource(rawItem.image, "https://picsum.photos/seed/quiet-observation/1200/900"),
+        imageAlt: text(rawItem.imageAlt) || text(rawItem.title),
+      },
+    };
+  }
+  if (collection === "contacts") {
+    if (!requiredText(rawItem.label) || !requiredText(rawItem.value)) return { error: "Rótulo e contato são obrigatórios." };
+    return {
+      value: {
+        ...base,
+        label: text(rawItem.label),
+        value: text(rawItem.value),
+        href: contactUrl(rawItem.href),
+        note: text(rawItem.note) || undefined,
+      },
+    };
+  }
   if (!requiredText(rawItem.value)) return { error: "O interesse é obrigatório." };
   return { value: { ...base, value: text(rawItem.value) } };
 }
@@ -305,6 +379,18 @@ function normalizeExistingItem(
   if (collection === "timeline" && !requiredText(merged.title)) return { error: "O título do marco é obrigatório." };
   if (collection === "learning" && (!requiredText(merged.title) || !requiredText(merged.institution) || !requiredText(merged.year))) {
     return { error: "Nome, instituição e ano são obrigatórios." };
+  }
+  if (collection === "questions" && (!requiredText(merged.title) || !requiredText(merged.text))) {
+    return { error: "Título e texto da pergunta são obrigatórios." };
+  }
+  if (collection === "questions") {
+    merged.image = imageSource(merged.image, (current as { image?: string }).image ?? "https://picsum.photos/seed/quiet-observation/1200/900");
+    merged.imageAlt = text(merged.imageAlt) || text(merged.title);
+  }
+  if (collection === "contacts") {
+    if (!requiredText(merged.label) || !requiredText(merged.value)) return { error: "Rótulo e contato são obrigatórios." };
+    merged.href = contactUrl(merged.href);
+    merged.note = text(merged.note) || undefined;
   }
   if (collection === "interests" && !requiredText(merged.value)) return { error: "O interesse é obrigatório." };
   return { value: merged as EditorContent[EditableCollection][number] };
@@ -341,6 +427,25 @@ function optionalUrl(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function contactUrl(value: unknown): string | undefined {
+  const candidate = text(value);
+  if (!candidate) return undefined;
+  if (/^(mailto:|tel:)/i.test(candidate)) return candidate;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function imageSource(value: unknown, fallback: string): string {
+  const candidate = text(value);
+  if (!candidate) return fallback;
+  if (candidate.startsWith("/") || candidate.startsWith("https://")) return candidate;
+  return fallback;
 }
 
 function todayLabel(): string {
