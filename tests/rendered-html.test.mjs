@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
+async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request("http://localhost/", {
+    new Request(`http://localhost${pathname}`, {
       headers: { accept: "text/html" },
     }),
     {
@@ -49,4 +49,11 @@ test("the starter loading surface is removed from the product", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(stylesheet, /grid-auto-flow:\s*dense/);
   assert.match(stylesheet, /prefers-reduced-motion/);
+});
+
+test("direct public routes render the site shell", async () => {
+  const response = await render("/contato");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Mikael/);
 });

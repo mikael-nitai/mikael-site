@@ -3,6 +3,7 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Link from "next/link";
 import {
   createContext,
   useContext,
@@ -330,8 +331,9 @@ function NoteRow({ note }: { note: NoteEntry & Partial<{ id: string; editorialSt
   );
 }
 
-function LearningRow({ entry }: { entry: LearningEntry & Partial<{ id: string; editorialStatus: EditorialStatus }> }) {
+function LearningRow({ entry }: { entry: LearningEntry & Partial<{ id: string; editorialStatus: EditorialStatus; documentAssetId: string; documentPublic: boolean }> }) {
   const editor = useEditor();
+  const canViewDocument = Boolean(entry.documentAssetId && (entry.documentPublic || editor?.canEdit));
   return (
     <article className="learning-row">
       <span className="learning-symbol" aria-hidden="true">+</span>
@@ -340,6 +342,7 @@ function LearningRow({ entry }: { entry: LearningEntry & Partial<{ id: string; e
         <p>{entry.institution}</p>
       </div>
       <span className="learning-year">{entry.year}</span>
+      {canViewDocument ? <a className="learning-document-link" href={`/api/assets?id=${encodeURIComponent(entry.documentAssetId ?? "")}`} target="_blank" rel="noreferrer">Ver documento</a> : null}
       {editor?.canEdit && entry.id ? <ContextEditButton onClick={() => editor.openEditor("learning", entry.id)} /> : null}
     </article>
   );
@@ -700,6 +703,8 @@ function JournalPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 function FormationPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
   const editor = useEditor();
   const content = editor?.content ?? seedEditorContent();
+  const hasDocument = content.learning.some((entry) => Boolean(entry.documentAssetId));
+  const hasPublicDocument = content.learning.some((entry) => Boolean(entry.documentAssetId && entry.documentPublic));
   return (
     <div className="inner-page chapter">
       <div className="container narrow-container">
@@ -714,7 +719,7 @@ function FormationPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
         <EditorAddButton collection="learning">Adicionar formação</EditorAddButton>
         <div className="privacy-panel reveal">
           <p className="eyebrow">Privacidade</p>
-          <p>Não há PDFs de certificados nem informações sensíveis publicados nesta primeira versão.</p>
+          <p>{hasPublicDocument ? "Os documentos marcados como públicos podem ser abertos diretamente nos registros acima." : editor?.canEdit && hasDocument ? "Há documento(s) anexado(s), mas eles continuam privados. Você pode controlar isso ao editar cada formação." : "Não há PDFs de certificados nem informações sensíveis publicados nesta primeira versão."}</p>
         </div>
         <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate}>Voltar ao início</ArrowLink></div>
       </div>
@@ -788,7 +793,7 @@ function SiteFooter({ onNavigate }: { onNavigate: (href: Route) => void }) {
       <div className="container footer-bottom">
         <span>© {new Date().getFullYear()} Mikael</span>
         <span>Feito com curiosidade e tempo.</span>
-        {!editor?.editMode ? <a className="owner-entry" href="/edit">Editar site</a> : null}
+        {!editor?.editMode ? <Link className="owner-entry" href="/edit">Editar site</Link> : null}
       </div>
     </footer>
   );
@@ -848,6 +853,16 @@ function EditorDrawerContent({ drawer, editor }: { drawer: NonNullable<DrawerSta
       if (documentFile) {
         const asset = await uploadAsset(documentFile, "document", payload.documentPublic === true, String(payload.title || "Documento"));
         payload.documentAssetId = asset.id;
+      }
+
+      if (drawer.collection === "learning" && typeof payload.documentAssetId === "string" && !documentFile) {
+        const visibilityResponse = await fetch(`/api/assets?id=${encodeURIComponent(payload.documentAssetId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isPublic: payload.documentPublic === true }),
+        });
+        const visibilityPayload = await visibilityResponse.json() as { error?: string };
+        if (!visibilityResponse.ok) throw new Error(visibilityPayload.error ?? "Não foi possível atualizar a visibilidade do documento.");
       }
 
       await editor.saveItem(drawer.collection, drawer.id, payload);
@@ -968,6 +983,7 @@ function LearningFields({ fields, setField, setCoverFile, setDocumentFile }: { f
         <div className="editor-field-grid editor-field-grid--nested">
           <UploadField label="Capa opcional" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
           <UploadField label="Certificado / documento (privado por padrão)" accept="application/pdf,image/jpeg,image/png" onFile={setDocumentFile} />
+          {fields.documentAssetId ? <div className="editor-asset-status"><span>Documento anexado</span><a href={`/api/assets?id=${encodeURIComponent(String(fields.documentAssetId))}`} target="_blank" rel="noreferrer">Abrir documento atual</a><small>O documento continua privado até você marcar a opção abaixo.</small></div> : null}
           <label className="editor-checkbox"><input type="checkbox" checked={fields.documentPublic === true} onChange={(event) => setField("documentPublic", event.target.checked)} /> Tornar o documento público</label>
         </div>
       </details>
@@ -1051,11 +1067,16 @@ function RichEditor({ value, onChange }: { value: string; onChange: (value: stri
 }
 
 function UploadField({ label, accept, onFile }: { label: string; accept: string; onFile: (file: File | null) => void }) {
+  const [fileName, setFileName] = useState("");
+  const selectFile = (file: File | null) => {
+    setFileName(file?.name ?? "");
+    onFile(file);
+  };
   return (
-    <label className="editor-upload" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFile(event.dataTransfer.files[0] ?? null); }}>
+    <label className="editor-upload" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); selectFile(event.dataTransfer.files[0] ?? null); }}>
       <span>{label}</span>
-      <small>Clique ou arraste um arquivo</small>
-      <input type="file" accept={accept} onChange={(event) => onFile(event.target.files?.[0] ?? null)} />
+      <small>{fileName ? `Selecionado: ${fileName}` : "Clique ou arraste um arquivo"}</small>
+      <input type="file" accept={accept} onChange={(event) => selectFile(event.target.files?.[0] ?? null)} />
     </label>
   );
 }
@@ -1065,7 +1086,7 @@ function initialEditorFields(content: EditorContent, drawer: NonNullable<DrawerS
   if (drawer.collection === "timeline") return { period: String(item?.period ?? "Agora"), title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), description: String(item?.description ?? ""), category: String(item?.category ?? "Trajetória"), editorialStatus: String(item?.editorialStatus ?? "draft") };
   if (drawer.collection === "projects") return { title: String(item?.title ?? ""), description: String(item?.description ?? ""), status: String(item?.status ?? "Em andamento"), period: String(item?.period ?? "Em construção"), technologies: Array.isArray(item?.technologies) ? item.technologies.join(", ") : "", body: String(item?.body ?? ""), github: String(item?.github ?? ""), demo: String(item?.demo ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
   if (drawer.collection === "notes") return { title: String(item?.title ?? ""), body: String(item?.body ?? "<p></p>"), area: String(item?.area ?? "Caderno"), date: String(item?.date ?? ""), tags: Array.isArray(item?.tags) ? item.tags.join(", ") : "", editorialStatus: String(item?.editorialStatus ?? "draft") };
-  if (drawer.collection === "learning") return { title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), year: String(item?.year ?? ""), hours: String(item?.hours ?? ""), category: String(item?.category ?? "Formação"), description: String(item?.description ?? ""), documentPublic: item?.documentPublic === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "learning") return { title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), year: String(item?.year ?? ""), hours: String(item?.hours ?? ""), category: String(item?.category ?? "Formação"), description: String(item?.description ?? ""), documentAssetId: String(item?.documentAssetId ?? ""), documentPublic: item?.documentPublic === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
   if (drawer.collection === "questions") return { title: String(item?.title ?? ""), text: String(item?.text ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
   if (drawer.collection === "contacts") return { label: String(item?.label ?? ""), value: String(item?.value ?? ""), href: String(item?.href ?? ""), note: String(item?.note ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
   return { value: String(item?.value ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };

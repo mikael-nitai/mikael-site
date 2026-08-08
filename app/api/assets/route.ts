@@ -86,6 +86,37 @@ export async function POST(request: Request): Promise<Response> {
   }
 }
 
+export async function PATCH(request: Request): Promise<Response> {
+  const user = await getOwnerChatGPTUser();
+  if (!user) return Response.json({ error: "Apenas o proprietário pode alterar arquivos." }, { status: 403 });
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) return Response.json({ error: "Arquivo inválido." }, { status: 400 });
+
+  let input: unknown;
+  try {
+    input = await request.json();
+  } catch {
+    return Response.json({ error: "JSON inválido." }, { status: 400 });
+  }
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return Response.json({ error: "Alterações inválidas." }, { status: 400 });
+  }
+
+  try {
+    const db = getDb();
+    const asset = await db.select().from(contentAssets).where(eq(contentAssets.id, id)).get();
+    if (!asset || asset.ownerUserId !== user.userId) return Response.json({ error: "Arquivo não encontrado." }, { status: 404 });
+    const changes = input as { isPublic?: unknown; altText?: unknown };
+    const nextIsPublic = typeof changes.isPublic === "boolean" ? changes.isPublic : asset.isPublic;
+    const nextAltText = typeof changes.altText === "string" ? changes.altText.slice(0, 240) : asset.altText;
+    await db.update(contentAssets).set({ isPublic: nextIsPublic, altText: nextAltText }).where(eq(contentAssets.id, id));
+    return Response.json({ asset: { ...asset, isPublic: nextIsPublic, altText: nextAltText } });
+  } catch (error) {
+    console.error("Falha ao atualizar asset", error);
+    return Response.json({ error: "Não foi possível atualizar o arquivo." }, { status: 503 });
+  }
+}
+
 export async function DELETE(request: Request): Promise<Response> {
   const user = await getOwnerChatGPTUser();
   if (!user) return Response.json({ error: "Apenas o proprietário pode remover arquivos." }, { status: 403 });

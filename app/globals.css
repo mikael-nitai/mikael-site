@@ -224,6 +224,8 @@ h3 { font-size: clamp(1.15rem, 1.5vw, 1.45rem); line-height: 1.18; }
 .learning-row h3 { font-size: 0.92rem; }
 .learning-row p { margin-top: 0.16rem; color: var(--ink-muted); font-size: 0.69rem; }
 .learning-year { color: var(--ink-muted); font-family: var(--mono); font-size: 0.62rem; white-space: nowrap; }
+.learning-document-link { color: var(--blue); font-family: var(--mono); font-size: 0.58rem; white-space: nowrap; }
+.learning-document-link:hover { color: var(--ink); }
 
 .interest-chapter { overflow: hidden; padding: clamp(4rem, 8vw, 7rem) 0; border-top: 1px solid rgba(157, 178, 214, 0.11); border-bottom: 1px solid rgba(157, 178, 214, 0.11); background: rgba(4, 11, 20, 0.5); }
 .interest-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 2rem; margin-bottom: 2.9rem; }
@@ -389,6 +391,10 @@ a.contact-value:hover { color: var(--violet); }
 .editor-upload { display: grid; gap: 0.22rem; padding: 0.75rem; border: 1px dashed rgba(185, 168, 255, 0.38); border-radius: 0.5rem; background: rgba(98, 86, 181, 0.08); cursor: pointer; }
 .editor-upload small { color: var(--ink-muted); font-size: 0.68rem; }
 .editor-upload input { width: 100%; margin-top: 0.3rem; color: var(--ink-muted); font-size: 0.7rem; }
+.editor-asset-status { display: grid; gap: 0.25rem; padding: 0.75rem; border: 1px solid rgba(142, 181, 255, 0.28); border-radius: 0.5rem; background: rgba(142, 181, 255, 0.06); }
+.editor-asset-status span { color: var(--ink); font-size: 0.78rem; }
+.editor-asset-status a { color: var(--blue); font-size: 0.75rem; }
+.editor-asset-status small { color: var(--ink-muted); font-size: 0.66rem; }
 .editor-form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.7rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
 .editor-form-submit-group { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-left: auto; }
 .editor-form-actions .button { min-height: 2.7rem; font-size: 0.72rem; }
@@ -410,6 +416,7 @@ a.contact-value:hover { color: var(--violet); }
   .project-mini-card { grid-template-columns: 5.8rem minmax(0, 1fr); }
   .learning-row { grid-template-columns: 1.8rem minmax(0, 1fr); }
   .learning-year { grid-column: 2; }
+  .learning-document-link { grid-column: 2; justify-self: start; }
 }
 
 @media (max-width: 820px) {

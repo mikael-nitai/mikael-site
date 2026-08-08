@@ -25,4 +25,17 @@ test("asset API enforces owner writes and private object reads", async () => {
   assert.match(source, /getOwnerChatGPTUser/);
   assert.match(source, /!asset\.isPublic && !isOwnerUser\(user\)/);
   assert.match(source, /ownerUserId !== user\.userId/);
+  assert.match(source, /export async function PATCH/);
+  assert.match(source, /isPublic: nextIsPublic/);
+});
+
+test("learning documents are persisted, visible to the owner, and linked publicly only when allowed", async () => {
+  const [contentSource, componentSource] = await Promise.all([
+    readFile(contentRoute, "utf8"),
+    readFile(new URL("../app/home/HomeExperience.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(contentSource, /documentAssetId: text\(rawItem\.documentAssetId\)/);
+  assert.match(componentSource, /documentAssetId/);
+  assert.match(componentSource, /Ver documento/);
+  assert.match(componentSource, /documentPublic \|\| editor\?\.canEdit/);
 });
