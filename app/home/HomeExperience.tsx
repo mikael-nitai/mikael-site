@@ -3,7 +3,6 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import Link from "next/link";
 import {
   createContext,
   useContext,
@@ -22,29 +21,15 @@ import {
   type EditorContent,
   type EditorialStatus,
 } from "../../content/editorial";
-import { type LearningEntry, type NoteEntry, type ProjectEntry, type TimelineEntry } from "../../content/siteData";
+import { type TimelineEntry } from "../../content/siteData";
+import {
+  normalizeSiteRoute,
+  primaryNavigation,
+  routeDefinition,
+  type SiteRoute as Route,
+} from "../site/routes";
 
 gsap.registerPlugin(ScrollTrigger);
-
-type Route = "/" | "/sobre" | "/trajetoria" | "/projetos" | "/caderno" | "/formacao" | "/contato";
-
-const routes: Route[] = [
-  "/",
-  "/sobre",
-  "/trajetoria",
-  "/projetos",
-  "/caderno",
-  "/formacao",
-  "/contato",
-];
-
-const navItems: Array<{ label: string; href: Route }> = [
-  { label: "Sobre", href: "/sobre" },
-  { label: "Meu caminho", href: "/trajetoria" },
-  { label: "Projetos", href: "/projetos" },
-  { label: "Caderno", href: "/caderno" },
-  { label: "Contato", href: "/contato" },
-];
 
 type DrawerState = { collection: EditableCollection; id?: string } | null;
 
@@ -57,13 +42,13 @@ type EditorController = {
   statusMessage: string | null;
   openEditor: (collection: EditableCollection, id?: string) => void;
   closeEditor: () => void;
-  enterEditMode: () => Promise<void>;
   viewAsVisitor: () => Promise<void>;
   signOut: () => void;
   saveItem: (collection: EditableCollection, id: string | undefined, payload: Record<string, unknown>) => Promise<void>;
-  hideItem: (collection: EditableCollection, id: string) => Promise<void>;
+  setItemStatus: (collection: EditableCollection, id: string, status: EditorialStatus) => Promise<void>;
+  deleteItem: (collection: EditableCollection, id: string) => Promise<void>;
   reorder: (collection: EditableCollection, orderedIds: string[]) => Promise<void>;
-  saveIdentity: (field: "description", value: string) => Promise<void>;
+  saveIdentity: (field: "name" | "role" | "location" | "description", value: string) => Promise<void>;
   savePage: (page: EditablePage, fields: Record<string, string>) => Promise<void>;
   setStatusMessage: (value: string | null) => void;
 };
@@ -72,24 +57,6 @@ const EditorContext = createContext<EditorController | null>(null);
 
 function useEditor(): EditorController | null {
   return useContext(EditorContext);
-}
-
-function normalizeRoute(pathname: string): Route {
-  return routes.includes(pathname as Route) ? (pathname as Route) : "/";
-}
-
-function useReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReducedMotion(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  return reducedMotion;
 }
 
 function SiteLink({
@@ -109,7 +76,15 @@ function SiteLink({
       href={href}
       className={className}
       onClick={(event) => {
-        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (
+          event.defaultPrevented
+          || event.button !== 0
+          || event.metaKey
+          || event.ctrlKey
+          || event.shiftKey
+          || event.altKey
+          || (props.target && props.target !== "_self")
+        ) return;
         event.preventDefault();
         onNavigate(href);
       }}
@@ -141,38 +116,85 @@ function ArrowLink({
 
 function SiteHeader({ route, onNavigate }: { route: Route; onNavigate: (href: Route) => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    mobileMenuRef.current?.querySelector<HTMLAnchorElement>("a")?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMenuOpen(false);
+      requestAnimationFrame(() => toggleRef.current?.focus());
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (headerRef.current?.contains(event.target as Node)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [menuOpen]);
+
+  const navigateFromMenu = (href: Route) => {
+    setMenuOpen(false);
+    onNavigate(href);
+  };
 
   return (
-    <header className="site-header">
+    <header className="site-header" ref={headerRef}>
       <div className="container header-inner">
         <SiteLink href="/" className="wordmark" onNavigate={onNavigate} aria-label="Mikael, início">
           Mikael
         </SiteLink>
 
         <button
+          ref={toggleRef}
           type="button"
           className="menu-toggle"
           aria-expanded={menuOpen}
-          aria-controls="primary-navigation"
+          aria-controls="mobile-navigation"
           onClick={() => setMenuOpen((current) => !current)}
         >
           <span>{menuOpen ? "Fechar" : "Menu"}</span>
           <span aria-hidden="true" className="menu-toggle-line" />
         </button>
 
-        <nav id="primary-navigation" className={`primary-nav ${menuOpen ? "is-open" : ""}`} aria-label="Navegação principal">
-          {navItems.map((item) => (
+        <nav className="primary-nav primary-nav-desktop" aria-label="Navegação principal">
+          {primaryNavigation.map((item) => (
             <SiteLink
-              key={item.href}
-              href={item.href}
-              className={route === item.href ? "is-active" : ""}
+              key={item.route}
+              href={item.route}
+              className={route === item.route ? "is-active" : ""}
               onNavigate={onNavigate}
-              aria-current={route === item.href ? "page" : undefined}
+              aria-current={route === item.route ? "page" : undefined}
             >
               {item.label}
             </SiteLink>
           ))}
         </nav>
+
+        {menuOpen ? (
+          <nav ref={mobileMenuRef} id="mobile-navigation" className="primary-nav primary-nav-mobile" aria-label="Navegação principal">
+            {primaryNavigation.map((item) => (
+              <SiteLink
+                key={item.route}
+                href={item.route}
+                className={route === item.route ? "is-active" : ""}
+                onNavigate={navigateFromMenu}
+                aria-current={route === item.route ? "page" : undefined}
+              >
+                {item.label}
+              </SiteLink>
+            ))}
+          </nav>
+        ) : null}
       </div>
     </header>
   );
@@ -191,9 +213,9 @@ function PageIntro({
 }) {
   return (
     <div className={`page-intro ${align === "center" ? "page-intro-center" : ""}`}>
-      <p className="eyebrow">{eyebrow}</p>
+      <div className="eyebrow">{eyebrow}</div>
       <h1>{title}</h1>
-      <p className="page-intro-copy">{description}</p>
+      <div className="page-intro-copy">{description}</div>
     </div>
   );
 }
@@ -209,6 +231,70 @@ function ContextEditButton({ label = "Editar", onClick }: { label?: string; onCl
     <button type="button" className="context-edit" onClick={onClick}>
       {label}
     </button>
+  );
+}
+
+function ItemEditorialActions({
+  collection,
+  itemId,
+  itemLabel,
+}: {
+  collection: EditableCollection;
+  itemId: string;
+  itemLabel: string;
+}) {
+  const editor = useEditor();
+  const [busy, setBusy] = useState(false);
+  if (!editor?.canEdit) return null;
+
+  const entries = editor.content[collection] as readonly { id: string }[];
+  const index = entries.findIndex((entry) => entry.id === itemId);
+  if (index < 0) return null;
+
+  const move = async (direction: -1 | 1) => {
+    const target = index + direction;
+    if (busy || target < 0 || target >= entries.length) return;
+    const reordered = [...entries];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setBusy(true);
+    try {
+      await editor.reorder(collection, reordered.map((entry) => entry.id));
+    } catch (error) {
+      editor.setStatusMessage(error instanceof Error ? error.message : `Não foi possível reordenar ${itemLabel}.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="item-editor-actions">
+      <ContextEditButton onClick={() => editor.openEditor(collection, itemId)} />
+      <span
+        className="item-order-controls"
+        role="group"
+        aria-label={`Reordenar ${itemLabel}, posição ${index + 1} de ${entries.length}`}
+        aria-busy={busy}
+      >
+        <button
+          type="button"
+          className="context-icon"
+          aria-label={`Mover ${itemLabel} para cima`}
+          disabled={busy || index === 0}
+          onClick={() => { void move(-1); }}
+        >
+          <span aria-hidden="true">↑</span>
+        </button>
+        <button
+          type="button"
+          className="context-icon"
+          aria-label={`Mover ${itemLabel} para baixo`}
+          disabled={busy || index === entries.length - 1}
+          onClick={() => { void move(1); }}
+        >
+          <span aria-hidden="true">↓</span>
+        </button>
+      </span>
+    </span>
   );
 }
 
@@ -232,30 +318,55 @@ function InlineTextEditor({
   value,
   label,
   onSave,
+  showValue = true,
 }: {
   value: string;
   label: string;
   onSave: (value: string) => Promise<void>;
+  showValue?: boolean;
 }) {
   const editor = useEditor();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-  if (!editor?.canEdit) return <>{value}</>;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  if (!editor?.canEdit) return showValue ? <>{value}</> : null;
 
   if (editing) {
     return (
       <form
         className="inline-editor-form"
+        aria-busy={busy}
         onSubmit={async (event) => {
           event.preventDefault();
-          await onSave(draft.trim());
-          setEditing(false);
+          setBusy(true);
+          setError(null);
+          let restoreFieldFocus = false;
+          try {
+            await onSave(draft.trim());
+            setEditing(false);
+          } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar o texto.");
+            restoreFieldFocus = true;
+          } finally {
+            setBusy(false);
+            // The textarea is disabled while saving, so it can only receive
+            // focus after the busy state has been cleared and React commits.
+            if (restoreFieldFocus) requestAnimationFrame(() => inputRef.current?.focus());
+          }
         }}
       >
-        <textarea aria-label={label} value={draft} onChange={(event) => setDraft(event.target.value)} rows={4} />
+        <textarea ref={inputRef} aria-label={label} value={draft} onChange={(event) => setDraft(event.target.value)} rows={4} disabled={busy} />
+        {error ? <span className="inline-editor-error" role="alert">{error}</span> : null}
         <span className="inline-editor-actions">
-          <button type="submit" className="button button-primary button-small">Salvar</button>
-          <button type="button" className="button button-quiet button-small" onClick={() => { setDraft(value); setEditing(false); }}>Cancelar</button>
+          <button type="submit" className="button button-primary button-small" disabled={busy}>{busy ? "Salvando…" : "Salvar"}</button>
+          <button type="button" className="button button-quiet button-small" disabled={busy} onClick={() => { setDraft(value); setError(null); setEditing(false); }}>Cancelar</button>
         </span>
       </form>
     );
@@ -263,25 +374,52 @@ function InlineTextEditor({
 
   return (
     <span className="inline-editor-value">
-      {value}
-      <button type="button" className="context-edit" onClick={() => setEditing(true)}>{label}</button>
+      {showValue ? value : null}
+      <button type="button" className="context-edit" onClick={() => { setDraft(value); setError(null); setEditing(true); }}>{label}</button>
     </span>
   );
 }
 
-function Timeline({ entries, compact = false }: { entries: readonly TimelineEntry[]; compact?: boolean }) {
+function EditableAction({
+  href,
+  value,
+  label,
+  className,
+  onNavigate,
+  onSave,
+}: {
+  href: Route;
+  value: string;
+  label: string;
+  className: string;
+  onNavigate: (href: Route) => void;
+  onSave: (value: string) => Promise<void>;
+}) {
+  return (
+    <div className="editable-action">
+      <ArrowLink href={href} onNavigate={onNavigate} className={className}>{value}</ArrowLink>
+      <InlineTextEditor value={value} label={label} onSave={onSave} showValue={false} />
+    </div>
+  );
+}
+
+function Timeline({ entries, compact = false }: { entries: readonly (TimelineEntry & { id?: string })[]; compact?: boolean }) {
   const editor = useEditor();
+  const Heading = compact ? "h3" : "h2";
   return (
     <ol className={`timeline ${compact ? "timeline-compact" : ""}`}>
       {entries.map((entry, index) => (
-        <li key={`${entry.title}-${entry.period}`} className="timeline-item">
+        <li key={entry.id ?? `${entry.title}-${entry.period}-${index}`} className="timeline-item">
           <span className={`timeline-node ${index === 0 ? "is-current" : ""}`} aria-hidden="true" />
           <div className="timeline-copy">
             <div className="editor-line">
               <p className="timeline-period">{entry.period}</p>
-              {editor?.canEdit && "id" in entry ? <ContextEditButton onClick={() => editor.openEditor("timeline", String(entry.id))} /> : null}
+              {editor?.canEdit && entry.id ? <ItemEditorialActions collection="timeline" itemId={String(entry.id)} itemLabel={entry.title} /> : null}
             </div>
-            <h3>{entry.title} <EditorialBadge status={(entry as TimelineEntry & { editorialStatus?: EditorialStatus }).editorialStatus} /></h3>
+            <div className="timeline-title-line">
+              <Heading>{entry.title} <EditorialBadge status={(entry as TimelineEntry & { editorialStatus?: EditorialStatus }).editorialStatus} /></Heading>
+              {entry.category ? <span className="timeline-category">{entry.category}</span> : null}
+            </div>
             {entry.institution ? <p className="timeline-institution">{entry.institution}</p> : null}
             <p>{entry.description}</p>
           </div>
@@ -291,12 +429,12 @@ function Timeline({ entries, compact = false }: { entries: readonly TimelineEntr
   );
 }
 
-function ProjectMiniCard({ project }: { project: ProjectEntry & Partial<{ id: string; editorialStatus: EditorialStatus }> }) {
+function ProjectMiniCard({ project }: { project: EditorContent["projects"][number] }) {
   const editor = useEditor();
   return (
     <article className="project-mini-card">
       <div className="project-mini-image image-reveal">
-        <img src={project.image} alt={project.imageAlt} loading="lazy" />
+        <img src={project.image || "/og-sky.jpg"} alt={project.imageAlt || `Capa de ${project.title}`} loading="lazy" />
       </div>
       <div className="project-mini-copy">
         <div className="card-line">
@@ -307,58 +445,184 @@ function ProjectMiniCard({ project }: { project: ProjectEntry & Partial<{ id: st
         <div className="tag-row" aria-label="Aspectos preparados para o projeto">
           {project.technologies.map((technology) => <span key={technology}>{technology}</span>)}
         </div>
-        {editor?.canEdit && project.id ? <ContextEditButton onClick={() => editor.openEditor("projects", project.id)} /> : null}
+        {editor?.canEdit && project.id ? <ItemEditorialActions collection="projects" itemId={project.id} itemLabel={project.title} /> : null}
       </div>
     </article>
   );
 }
 
-function NoteRow({ note }: { note: NoteEntry & Partial<{ id: string; editorialStatus: EditorialStatus }> }) {
+function NoteRow({ note, detailed = false }: { note: EditorContent["notes"][number]; detailed?: boolean }) {
   const editor = useEditor();
+  const Heading = detailed ? "h2" : "h3";
   return (
-    <article className="note-row">
-      <div>
+    <article className={`note-row ${detailed ? "note-row-detailed" : ""}`}>
+      {detailed && note.coverAssetId ? (
+        <div className="note-cover image-reveal">
+          <img src={`/api/assets?id=${encodeURIComponent(note.coverAssetId)}`} alt={`Capa de ${note.title}`} loading="lazy" />
+        </div>
+      ) : null}
+      <div className="note-copy">
         <p className="note-area">{note.area}</p>
-        <h3>{note.title} <EditorialBadge status={note.editorialStatus} /></h3>
+        <Heading>{note.title} <EditorialBadge status={note.editorialStatus} /></Heading>
         <p>{note.summary}</p>
+        {detailed && note.tags.length ? <div className="tag-row" aria-label="Temas da nota">{note.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
+        {detailed && note.body ? <div className="rich-content note-body" dangerouslySetInnerHTML={{ __html: note.body }} /> : null}
       </div>
       <div className="note-meta">
         <span>{note.date}</span>
         <span>{note.readingTime}</span>
-        {editor?.canEdit && note.id ? <ContextEditButton onClick={() => editor.openEditor("notes", note.id)} /> : null}
+        {editor?.canEdit && note.id ? <ItemEditorialActions collection="notes" itemId={note.id} itemLabel={note.title} /> : null}
       </div>
     </article>
   );
 }
 
-function LearningRow({ entry }: { entry: LearningEntry & Partial<{ id: string; editorialStatus: EditorialStatus; documentAssetId: string; documentPublic: boolean }> }) {
+type AssetMetadata = {
+  id: string;
+  fileName?: string;
+  contentType?: string;
+  size?: number;
+  altText?: string;
+  isPublic?: boolean;
+  kind?: string;
+  createdAt?: string;
+};
+
+function formatFileSize(size: number | undefined): string | null {
+  if (!size || size < 0) return null;
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+}
+
+function DocumentPanel({
+  assetId,
+  title,
+  declaredPublic,
+  compact = false,
+  onRemove,
+}: {
+  assetId: string;
+  title: string;
+  declaredPublic: boolean;
+  compact?: boolean;
+  onRemove?: () => void;
+}) {
+  const [metadata, setMetadata] = useState<AssetMetadata | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const source = `/api/assets?id=${encodeURIComponent(assetId)}`;
+
+  useEffect(() => {
+    let active = true;
+    const loadMetadata = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`${source}&metadata=1`, { cache: "no-store" });
+        const responseType = response.headers.get("content-type") ?? "";
+        if (!response.ok) {
+          const payload = responseType.includes("application/json") ? await response.json() as { error?: string } : null;
+          throw new Error(payload?.error ?? "Não foi possível carregar os dados do documento.");
+        }
+        const next = responseType.includes("application/json")
+          ? (await response.json() as { asset?: AssetMetadata }).asset ?? null
+          : {
+              id: assetId,
+              contentType: responseType || undefined,
+              size: Number(response.headers.get("content-length")) || undefined,
+              isPublic: declaredPublic,
+            };
+        if (active) setMetadata(next);
+      } catch (metadataError) {
+        if (active) setError(metadataError instanceof Error ? metadataError.message : "Documento indisponível.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loadMetadata();
+    return () => { active = false; };
+  }, [assetId, declaredPublic, source]);
+
+  const contentType = metadata?.contentType ?? "";
+  const fileSize = formatFileSize(metadata?.size);
+  const publicState = metadata?.isPublic ?? declaredPublic;
+
+  return (
+    <section className={`document-panel ${compact ? "document-panel-compact" : ""}`} aria-label={`Documento de ${title}`}>
+      <div className="document-panel-heading">
+        <div>
+          <p className="document-kicker">{publicState ? "Documento público" : "Documento privado"}</p>
+          <h4>{metadata?.fileName || "Documento anexado"}</h4>
+          <p className="document-meta">
+            {[contentType === "application/pdf" ? "PDF" : contentType.startsWith("image/") ? "Imagem" : null, fileSize].filter(Boolean).join(" · ") || "Metadados em carregamento"}
+          </p>
+        </div>
+        <div className="document-actions">
+          <a href={source} target="_blank" rel="noreferrer">Abrir documento</a>
+          {onRemove ? <button type="button" className="context-edit context-edit-danger" onClick={onRemove}>Remover anexo</button> : null}
+        </div>
+      </div>
+
+      {loading ? <p className="document-feedback" role="status">Carregando informações do documento…</p> : null}
+      {error ? <p className="document-feedback document-feedback-error" role="alert">{error} O link de abertura continua disponível.</p> : null}
+      {!compact && !loading && !error && contentType === "application/pdf" ? (
+        <iframe className="document-preview" src={source} title={`Prévia de ${metadata?.fileName || title}`} loading="lazy" />
+      ) : null}
+      {!compact && !loading && !error && contentType.startsWith("image/") ? (
+        <div className="document-image-preview"><img src={source} alt={metadata?.altText || `Documento de ${title}`} loading="lazy" /></div>
+      ) : null}
+      {!compact && !loading && !error && !contentType ? <p className="document-feedback">A prévia não está disponível. Use “Abrir documento”.</p> : null}
+    </section>
+  );
+}
+
+function LearningRow({ entry, detailed = false }: { entry: EditorContent["learning"][number]; detailed?: boolean }) {
   const editor = useEditor();
   const canViewDocument = Boolean(entry.documentAssetId && (entry.documentPublic || editor?.canEdit));
+  const Heading = detailed ? "h2" : "h3";
   return (
-    <article className="learning-row">
-      <span className="learning-symbol" aria-hidden="true">+</span>
-      <div>
-        <h3>{entry.title} <EditorialBadge status={entry.editorialStatus} /></h3>
-        <p>{entry.institution}</p>
+    <article className={`learning-row ${detailed ? "learning-row-detailed" : ""}`}>
+      {detailed && entry.coverAssetId ? (
+        <div className="learning-cover image-reveal"><img src={`/api/assets?id=${encodeURIComponent(entry.coverAssetId)}`} alt={`Capa de ${entry.title}`} loading="lazy" /></div>
+      ) : <span className="learning-symbol" aria-hidden="true">+</span>}
+      <div className="learning-copy">
+        <div className="learning-title-line">
+          <div>
+            <p className="learning-category">{entry.category}</p>
+            <Heading>{entry.title} <EditorialBadge status={entry.editorialStatus} /></Heading>
+          </div>
+          {editor?.canEdit && entry.id ? <ItemEditorialActions collection="learning" itemId={entry.id} itemLabel={entry.title} /> : null}
+        </div>
+        <p className="learning-institution">{entry.institution}</p>
+        <div className="learning-meta">
+          <span>{entry.year}</span>
+          {entry.hours ? <span>{entry.hours}</span> : null}
+        </div>
+        {detailed && entry.description ? <p className="learning-description">{entry.description}</p> : null}
+        {canViewDocument && entry.documentAssetId ? <DocumentPanel assetId={entry.documentAssetId} title={entry.title} declaredPublic={entry.documentPublic} compact={!detailed} /> : null}
       </div>
-      <span className="learning-year">{entry.year}</span>
-      {canViewDocument ? <a className="learning-document-link" href={`/api/assets?id=${encodeURIComponent(entry.documentAssetId ?? "")}`} target="_blank" rel="noreferrer">Ver documento</a> : null}
-      {editor?.canEdit && entry.id ? <ContextEditButton onClick={() => editor.openEditor("learning", entry.id)} /> : null}
     </article>
   );
 }
 
-function InterestMarquee({ interests }: { interests: readonly string[] }) {
+function InterestMarquee({ interests }: { interests: readonly { id: string; value: string }[] }) {
   const items = [...interests, ...interests];
   return (
-    <div className="interest-marquee" aria-label="Interesses de Mikael">
-      <div className="marquee-track">
+    <div className="interest-marquee">
+      <ul className="sr-only" aria-label="Interesses de Mikael">
+        {interests.map((interest) => <li key={interest.id}>{interest.value}</li>)}
+      </ul>
+      <div className="marquee-track" aria-hidden="true">
         {items.map((interest, index) => (
-          <span key={`${interest}-${index}`}>
-            {interest}
+          <span key={`${interest.id}-${index}`}>
+            {interest.value}
             <span className="marquee-divider" aria-hidden="true">/</span>
           </span>
         ))}
+      </div>
+      <div className="interest-static-list" aria-hidden="true">
+        {interests.map((interest) => <span key={interest.id}>{interest.value}</span>)}
       </div>
     </div>
   );
@@ -373,7 +637,9 @@ function InterestEditor() {
     const target = index + direction;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
-    void editor.reorder("interests", next.map((item) => item.id));
+    void editor.reorder("interests", next.map((item) => item.id)).catch((error) => {
+      editor.setStatusMessage(error instanceof Error ? error.message : "Não foi possível reordenar os interesses.");
+    });
   };
 
   return (
@@ -387,50 +653,38 @@ function InterestEditor() {
           <span className="interest-editor-item" key={interest.id}>
             <span>{interest.value}</span>
             <ContextEditButton label="Renomear" onClick={() => editor.openEditor("interests", interest.id)} />
-            <button type="button" className="context-icon" aria-label={`Mover ${interest.value} para cima`} onClick={() => move(index, -1)}>↑</button>
-            <button type="button" className="context-icon" aria-label={`Mover ${interest.value} para baixo`} onClick={() => move(index, 1)}>↓</button>
-            <button type="button" className="context-icon context-icon-danger" aria-label={`Remover ${interest.value}`} onClick={() => void editor.hideItem("interests", interest.id)}>×</button>
+            <button
+              type="button"
+              className="context-icon"
+              aria-label={`Mover ${interest.value} para cima`}
+              disabled={index === 0}
+              onClick={() => move(index, -1)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="context-icon"
+              aria-label={`Mover ${interest.value} para baixo`}
+              disabled={index === editor.content.interests.length - 1}
+              onClick={() => move(index, 1)}
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              className="context-icon context-icon-danger"
+              aria-label={`Ocultar ${interest.value}`}
+              onClick={() => {
+                void editor.setItemStatus("interests", interest.id, "hidden").catch((error) => {
+                  editor.setStatusMessage(error instanceof Error ? error.message : "Não foi possível ocultar o interesse.");
+                });
+              }}
+            >×</button>
           </span>
         ))}
       </div>
     </div>
-  );
-}
-
-function QuestionCarousel({ questions }: { questions: EditorContent["questions"] }) {
-  const editor = useEditor();
-  const [activeQuestion, setActiveQuestion] = useState(0);
-  const question = questions[activeQuestion] ?? questions[0];
-
-  const move = (direction: -1 | 1) => {
-    setActiveQuestion((current) => (current + direction + questions.length) % questions.length);
-  };
-
-  if (!question) return null;
-
-  return (
-    <section className="question-carousel" aria-labelledby="questions-title">
-      <div className="question-carousel-heading">
-        <p className="eyebrow">Perguntas em movimento</p>
-        <h2 id="questions-title">Algumas perguntas ficam abertas por mais tempo.</h2>
-      </div>
-      <div className="question-carousel-stage">
-        <p className="question-count" aria-label={`Pergunta ${activeQuestion + 1} de ${questions.length}`}>
-          {String(activeQuestion + 1).padStart(2, "0")} / {String(questions.length).padStart(2, "0")}
-        </p>
-        <div className="question-carousel-copy" aria-live="polite">
-          <div className="editor-line">
-            <h3>{question.title}</h3>
-            {editor?.canEdit ? <ContextEditButton onClick={() => editor.openEditor("questions", question.id)} /> : null}
-          </div>
-          <p>{question.text}</p>
-        </div>
-        <div className="carousel-controls">
-          <button type="button" aria-label="Pergunta anterior" onClick={() => move(-1)}>←</button>
-          <button type="button" aria-label="Próxima pergunta" onClick={() => move(1)}>→</button>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -444,8 +698,13 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
         <div className="star-field" aria-hidden="true" />
         <div className="container hero-grid">
           <div className="hero-copy hero-reveal">
-            <h1>Mikael</h1>
-            <p className="hero-lead"><InlineTextEditor value={content.identity.description} label="Editar apresentação" onSave={(value) => editor?.saveIdentity("description", value) ?? Promise.resolve()} /></p>
+            <div className="hero-kicker">
+              <InlineTextEditor value={content.identity.role} label="Editar função" onSave={(value) => editor?.saveIdentity("role", value) ?? Promise.resolve()} />
+              <span aria-hidden="true"> · </span>
+              <InlineTextEditor value={content.identity.location} label="Editar localização" onSave={(value) => editor?.saveIdentity("location", value) ?? Promise.resolve()} />
+            </div>
+            <h1><InlineTextEditor value={content.identity.name} label="Editar nome" onSave={(value) => editor?.saveIdentity("name", value) ?? Promise.resolve()} /></h1>
+            <div className="hero-lead"><InlineTextEditor value={content.identity.description} label="Editar apresentação" onSave={(value) => editor?.saveIdentity("description", value) ?? Promise.resolve()} /></div>
             <div className="hero-actions">
               <SiteLink href="/projetos" className="button button-primary" onNavigate={onNavigate}>Ver projetos</SiteLink>
               <SiteLink href="/caderno" className="button button-outline" onNavigate={onNavigate}>Ler caderno</SiteLink>
@@ -487,7 +746,7 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
               <p className="eyebrow">O que estou reunindo</p>
               <h2><InlineTextEditor value={home.overviewTitle} label="Editar título" onSave={(value) => editor?.savePage("home", { overviewTitle: value }) ?? Promise.resolve()} /></h2>
             </div>
-            <p className="overview-description"><InlineTextEditor value={home.overviewDescription} label="Editar texto" onSave={(value) => editor?.savePage("home", { overviewDescription: value }) ?? Promise.resolve()} /></p>
+            <div className="overview-description"><InlineTextEditor value={home.overviewDescription} label="Editar texto" onSave={(value) => editor?.savePage("home", { overviewDescription: value }) ?? Promise.resolve()} /></div>
           </div>
 
           <div className="bento-grid">
@@ -497,7 +756,6 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
                   <p className="eyebrow">Percurso</p>
                   <h2>Caminho</h2>
                 </div>
-                <span className="card-index" aria-hidden="true">01</span>
               </div>
               <Timeline entries={content.timeline} compact />
               <EditorAddButton collection="timeline">Adicionar marco</EditorAddButton>
@@ -555,7 +813,7 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           <p>Astrofísica e Física são o eixo. Tecnologia aparece como ferramenta para perguntar melhor, organizar o estudo e construir pequenas coisas.</p>
         </div>
         <InterestEditor />
-        <InterestMarquee interests={content.interests.map((interest) => interest.value)} />
+        <InterestMarquee interests={content.interests} />
       </section>
 
       <section className="chapter study-stage" id="estudo">
@@ -570,12 +828,12 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
             {content.questions.map((question) => (
               <article className="study-card study-card-reveal" key={question.id}>
                 <div className="study-card-image">
-                  <img src={question.image} alt={question.imageAlt} loading="lazy" />
+                  <img src={question.image || "/og-sky.jpg"} alt={question.imageAlt || `Imagem de ${question.title}`} loading="lazy" />
                 </div>
                 <div className="study-card-copy">
                   <div className="editor-line">
                     <p className="eyebrow">Pergunta em aberto</p>
-                    {editor?.canEdit ? <ContextEditButton onClick={() => editor.openEditor("questions", question.id)} /> : null}
+                    {editor?.canEdit ? <ItemEditorialActions collection="questions" itemId={question.id} itemLabel={question.title} /> : null}
                   </div>
                   <h3>{question.title}</h3>
                   <p>{question.text}</p>
@@ -585,17 +843,21 @@ function HomePage({ onNavigate }: { onNavigate: (href: Route) => void }) {
             <EditorAddButton collection="questions">Adicionar pergunta</EditorAddButton>
           </div>
         </div>
-        <div className="container">
-          <QuestionCarousel questions={content.questions} />
-        </div>
       </section>
 
       <section className="chapter closing-chapter">
         <div className="container closing-cta reveal">
-          <p className="eyebrow"><InlineTextEditor value={home.closingEyebrow} label="Editar chamada" onSave={(value) => editor?.savePage("home", { closingEyebrow: value }) ?? Promise.resolve()} /></p>
+          <div className="eyebrow"><InlineTextEditor value={home.closingEyebrow} label="Editar chamada" onSave={(value) => editor?.savePage("home", { closingEyebrow: value }) ?? Promise.resolve()} /></div>
           <h2><InlineTextEditor value={home.closingTitle} label="Editar título" onSave={(value) => editor?.savePage("home", { closingTitle: value }) ?? Promise.resolve()} /></h2>
-          <p className="closing-copy"><InlineTextEditor value={home.closingDescription} label="Editar texto" onSave={(value) => editor?.savePage("home", { closingDescription: value }) ?? Promise.resolve()} /></p>
-          <ArrowLink href="/sobre" onNavigate={onNavigate} className="button button-primary"><InlineTextEditor value={home.closingActionLabel} label="Editar botão" onSave={(value) => editor?.savePage("home", { closingActionLabel: value }) ?? Promise.resolve()} /></ArrowLink>
+          <div className="closing-copy"><InlineTextEditor value={home.closingDescription} label="Editar texto" onSave={(value) => editor?.savePage("home", { closingDescription: value }) ?? Promise.resolve()} /></div>
+          <EditableAction
+            href="/sobre"
+            value={home.closingActionLabel}
+            label="Editar botão"
+            className="button button-primary"
+            onNavigate={onNavigate}
+            onSave={(value) => editor?.savePage("home", { closingActionLabel: value }) ?? Promise.resolve()}
+          />
         </div>
       </section>
     </>
@@ -613,6 +875,15 @@ function AboutPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           title={<InlineTextEditor value={content.about.title} label="Editar título" onSave={(value) => editor?.savePage("about", { title: value }) ?? Promise.resolve()} />}
           description={<InlineTextEditor value={content.about.body} label="Editar texto" onSave={(value) => editor?.savePage("about", { body: value }) ?? Promise.resolve()} />}
         />
+        <section className="about-tools" aria-labelledby="about-tools-title">
+          <div>
+            <p className="eyebrow">Ferramentas de estudo</p>
+            <h2 id="about-tools-title">Recursos que ajudam a organizar o caminho.</h2>
+          </div>
+          <ul className="tool-list">
+            {content.tools.map((tool) => <li key={tool}>{tool}</li>)}
+          </ul>
+        </section>
         <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate}>Voltar ao início</ArrowLink></div>
       </div>
     </div>
@@ -655,15 +926,27 @@ function ProjectsPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           {content.projects.map((project) => (
             <article className="project-large-card reveal" key={project.id}>
               <div className="project-large-image image-reveal">
-                <img src={project.image} alt={project.imageAlt} loading="lazy" />
+                <img src={project.image || "/og-sky.jpg"} alt={project.imageAlt || `Capa de ${project.title}`} loading="lazy" />
               </div>
               <div className="project-large-copy">
                 <div className="card-line"><span className="card-statuses"><StatusMark>{project.status}</StatusMark><EditorialBadge status={project.editorialStatus} /></span><span className="project-period">{project.period}</span></div>
                 <h2>{project.title}</h2>
                 <p>{project.description}</p>
                 <div className="tag-row">{project.technologies.map((technology) => <span key={technology}>{technology}</span>)}</div>
-                <p className="placeholder-note">Conteúdo temporário: substituir quando houver um projeto público para documentar.</p>
-                {editor?.canEdit ? <ContextEditButton onClick={() => editor.openEditor("projects", project.id)} /> : null}
+                {project.body && project.body.replace(/<[^>]+>/g, "").trim() !== project.description.trim() ? (
+                  <details className="public-details">
+                    <summary>Ler registro completo</summary>
+                    <div className="rich-content" dangerouslySetInnerHTML={{ __html: project.body }} />
+                  </details>
+                ) : null}
+                {project.github || project.demo ? (
+                  <div className="project-links" aria-label={`Links de ${project.title}`}>
+                    {project.github ? <a href={project.github} target="_blank" rel="noreferrer">GitHub</a> : null}
+                    {project.demo ? <a href={project.demo} target="_blank" rel="noreferrer">Demonstração</a> : null}
+                  </div>
+                ) : null}
+                {project.placeholder ? <p className="placeholder-note">Conteúdo temporário: substituir quando houver um projeto público para documentar.</p> : null}
+                {editor?.canEdit ? <ItemEditorialActions collection="projects" itemId={project.id} itemLabel={project.title} /> : null}
               </div>
             </article>
           ))}
@@ -687,13 +970,9 @@ function JournalPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           description="Um índice pessoal para estudos, leituras e perguntas. As primeiras entradas ainda serão escritas; a estrutura já aceita conteúdo organizado por área, data e tempo de leitura."
         />
         <div className="journal-list reveal">
-          {content.notes.map((note) => <NoteRow key={note.id} note={note} />)}
+          {content.notes.map((note) => <NoteRow key={note.id} note={note} detailed />)}
         </div>
         <EditorAddButton collection="notes">Nova nota</EditorAddButton>
-        <div className="markdown-note reveal">
-          <p className="eyebrow">Próxima evolução</p>
-          <p>Quando houver textos reais, esta área pode receber Markdown ou MDX sem exigir que a interface seja reescrita.</p>
-        </div>
         <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate}>Voltar ao início</ArrowLink></div>
       </div>
     </div>
@@ -714,7 +993,7 @@ function FormationPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           description="A interface mostra apenas metadados públicos apropriados. Documentos originais permanecem privados por padrão e só serão associados quando isso fizer sentido."
         />
         <div className="formation-list reveal">
-          {content.learning.map((entry) => <LearningRow key={entry.id} entry={entry} />)}
+          {content.learning.map((entry) => <LearningRow key={entry.id} entry={entry} detailed />)}
         </div>
         <EditorAddButton collection="learning">Adicionar formação</EditorAddButton>
         <div className="privacy-panel reveal">
@@ -741,9 +1020,9 @@ function ContactPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
         />
         {content.contacts.length === 0 ? (
           <div className="contact-card reveal">
-            <p className="eyebrow"><InlineTextEditor value={contact.emptyEyebrow} label="Editar chamada vazia" onSave={(value) => editor?.savePage("contact", { emptyEyebrow: value }) ?? Promise.resolve()} /></p>
+            <div className="eyebrow"><InlineTextEditor value={contact.emptyEyebrow} label="Editar chamada vazia" onSave={(value) => editor?.savePage("contact", { emptyEyebrow: value }) ?? Promise.resolve()} /></div>
             <h2><InlineTextEditor value={contact.emptyTitle} label="Editar título vazio" onSave={(value) => editor?.savePage("contact", { emptyTitle: value }) ?? Promise.resolve()} /></h2>
-            <p><InlineTextEditor value={contact.emptyDescription} label="Editar texto vazio" onSave={(value) => editor?.savePage("contact", { emptyDescription: value }) ?? Promise.resolve()} /></p>
+            <div><InlineTextEditor value={contact.emptyDescription} label="Editar texto vazio" onSave={(value) => editor?.savePage("contact", { emptyDescription: value }) ?? Promise.resolve()} /></div>
           </div>
         ) : (
           <div className="contact-list">
@@ -751,7 +1030,7 @@ function ContactPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
               <article className="contact-card contact-card-entry reveal" key={entry.id}>
                 <div className="editor-line">
                   <p className="eyebrow">{entry.label}</p>
-                  <span className="card-statuses"><EditorialBadge status={entry.editorialStatus} /><ContextEditButton onClick={() => editor?.openEditor("contacts", entry.id)} /></span>
+                  <span className="card-statuses"><EditorialBadge status={entry.editorialStatus} /><ItemEditorialActions collection="contacts" itemId={entry.id} itemLabel={entry.label} /></span>
                 </div>
                 {entry.href ? <a className="contact-value" href={entry.href}>{entry.value}</a> : <p className="contact-value">{entry.value}</p>}
                 {entry.note ? <p>{entry.note}</p> : null}
@@ -760,7 +1039,16 @@ function ContactPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
           </div>
         )}
         <EditorAddButton collection="contacts">Adicionar contato</EditorAddButton>
-        <div className="page-backlink"><ArrowLink href="/" onNavigate={onNavigate} className="button button-outline"><InlineTextEditor value={contact.backLabel} label="Editar botão" onSave={(value) => editor?.savePage("contact", { backLabel: value }) ?? Promise.resolve()} /></ArrowLink></div>
+        <div className="page-backlink">
+          <EditableAction
+            href="/"
+            value={contact.backLabel}
+            label="Editar botão"
+            className="button button-outline"
+            onNavigate={onNavigate}
+            onSave={(value) => editor?.savePage("contact", { backLabel: value }) ?? Promise.resolve()}
+          />
+        </div>
       </div>
     </div>
   );
@@ -768,12 +1056,13 @@ function ContactPage({ onNavigate }: { onNavigate: (href: Route) => void }) {
 
 function SiteFooter({ onNavigate }: { onNavigate: (href: Route) => void }) {
   const editor = useEditor();
+  const content = editor?.content ?? seedEditorContent();
   return (
     <footer className="site-footer">
       <div className="container footer-main">
         <div>
-          <SiteLink href="/" className="footer-wordmark" onNavigate={onNavigate}>Mikael</SiteLink>
-          <p>Estudante de Física · Astrofísica | UFS</p>
+          <SiteLink href="/" className="footer-wordmark" onNavigate={onNavigate}>{content.identity.name}</SiteLink>
+          <p>{content.identity.role}</p>
         </div>
         <div className="footer-links">
           <div>
@@ -793,7 +1082,10 @@ function SiteFooter({ onNavigate }: { onNavigate: (href: Route) => void }) {
       <div className="container footer-bottom">
         <span>© {new Date().getFullYear()} Mikael</span>
         <span>Feito com curiosidade e tempo.</span>
-        {!editor?.editMode ? <Link className="owner-entry" href="/edit">Editar site</Link> : null}
+        {!editor?.editMode ? (
+          /* Native navigation is intentional: this crosses into the authenticated server route. */
+          <a className="owner-entry" href="/edit">Editar site</a>
+        ) : null}
       </div>
     </footer>
   );
@@ -827,62 +1119,162 @@ function EditorDrawerContent({ drawer, editor }: { drawer: NonNullable<DrawerSta
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
 
   const setField = (name: string, value: string | boolean) => setFields((current) => ({ ...current, [name]: value }));
-  const currentItem = drawer.id ? (editor.content[drawer.collection] as Array<{ id: string }>).find((item) => item.id === drawer.id) : null;
+  const currentItem = drawer.id ? (editor.content[drawer.collection] as Array<Record<string, unknown>>).find((item) => item.id === drawer.id) : null;
   const isExisting = Boolean(currentItem);
   const title = isExisting ? `Editar ${collectionLabel(drawer.collection).toLowerCase()}` : `Adicionar ${collectionLabel(drawer.collection).toLowerCase()}`;
+  const currentStatus = typeof currentItem?.editorialStatus === "string" ? currentItem.editorialStatus : "draft";
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const firstField = dialogRef.current?.querySelector<HTMLElement>(".editor-form input:not([type='hidden']), .editor-form textarea, .editor-form select, .editor-richtext");
+    requestAnimationFrame(() => firstField?.focus());
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusableElements = () => [...dialog.querySelectorAll<HTMLElement>(
+      "a[href], button:not([disabled]), summary, input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable='true'], [tabindex]:not([tabindex='-1'])",
+    )].filter((element) => {
+      const closedDetails = element.closest("details:not([open])");
+      const hiddenByDetails = closedDetails && element !== closedDetails.querySelector(":scope > summary");
+      return !hiddenByDetails && !element.hasAttribute("hidden") && element.getClientRects().length > 0;
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) {
+        event.preventDefault();
+        editor.closeEditor();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = focusableElements();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) {
+        (focusableElements()[0] ?? dialog).focus();
+      }
+    };
+    dialog.addEventListener("keydown", onKeyDown);
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      dialog.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("focusin", onFocusIn);
+    };
+  }, [busy, editor]);
+
+  const runItemAction = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Não foi possível concluir a ação.");
+      requestAnimationFrame(() => errorRef.current?.focus());
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-    const forcedStatus = submitter?.value === "published" || submitter?.value === "draft" ? submitter.value : fields.editorialStatus;
+    const forcedStatus = submitter?.value === "published" || submitter?.value === "draft" || submitter?.value === "hidden"
+      ? submitter.value
+      : fields.editorialStatus;
     setBusy(true);
     setError(null);
+    const newAssetIds: string[] = [];
+    let contentSaved = false;
     try {
       const payload: Record<string, unknown> = { ...fields, editorialStatus: forcedStatus };
       if (typeof payload.technologies === "string") payload.technologies = commaList(payload.technologies);
       if (typeof payload.tags === "string") payload.tags = commaList(payload.tags);
+      if (payload.placeholder === true) delete payload.placeholder;
+
+      if (payload.removeCover === true) {
+        payload.coverAssetId = null;
+        if (drawer.collection === "projects" || drawer.collection === "questions") payload.image = "";
+      }
+      if (payload.removeDocument === true) {
+        payload.documentAssetId = null;
+        payload.documentPublic = false;
+      }
+      delete payload.removeCover;
+      delete payload.removeDocument;
 
       if (coverFile) {
-        const asset = await uploadAsset(coverFile, "image", true, String(payload.imageAlt || payload.title || "Capa"));
+        const asset = await uploadAsset(coverFile, "image", String(payload.imageAlt || payload.title || "Capa"));
+        newAssetIds.push(asset.id);
         payload.coverAssetId = asset.id;
-        payload.image = `/api/assets?id=${encodeURIComponent(asset.id)}`;
-        payload.imageAlt = asset.altText || payload.imageAlt || payload.title;
+        // Only projects and questions own image/imageAlt content fields. Notes
+        // and learning entries reference the cover exclusively by asset id.
+        if (drawer.collection === "projects" || drawer.collection === "questions") {
+          payload.image = `/api/assets?id=${encodeURIComponent(asset.id)}`;
+          payload.imageAlt = asset.altText || payload.imageAlt || payload.title;
+        }
       }
       if (documentFile) {
-        const asset = await uploadAsset(documentFile, "document", payload.documentPublic === true, String(payload.title || "Documento"));
+        const asset = await uploadAsset(documentFile, "document", String(payload.title || "Documento"));
+        newAssetIds.push(asset.id);
         payload.documentAssetId = asset.id;
       }
 
-      if (drawer.collection === "learning" && typeof payload.documentAssetId === "string" && !documentFile) {
-        const visibilityResponse = await fetch(`/api/assets?id=${encodeURIComponent(payload.documentAssetId)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isPublic: payload.documentPublic === true }),
-        });
-        const visibilityPayload = await visibilityResponse.json() as { error?: string };
-        if (!visibilityResponse.ok) throw new Error(visibilityPayload.error ?? "Não foi possível atualizar a visibilidade do documento.");
-      }
-
       await editor.saveItem(drawer.collection, drawer.id, payload);
+      contentSaved = true;
+
+      const coverAssetId = typeof payload.coverAssetId === "string" ? payload.coverAssetId : typeof fields.coverAssetId === "string" ? fields.coverAssetId : "";
+      const documentAssetId = typeof payload.documentAssetId === "string" ? payload.documentAssetId : typeof fields.documentAssetId === "string" ? fields.documentAssetId : "";
+
+      const oldCoverId = typeof currentItem?.coverAssetId === "string" ? currentItem.coverAssetId : "";
+      const oldDocumentId = typeof currentItem?.documentAssetId === "string" ? currentItem.documentAssetId : "";
+      if (oldCoverId && (payload.coverAssetId === null || (coverFile && oldCoverId !== coverAssetId))) void deleteAssetBestEffort(oldCoverId);
+      if (oldDocumentId && (payload.documentAssetId === null || (documentFile && oldDocumentId !== documentAssetId))) void deleteAssetBestEffort(oldDocumentId);
+      editor.closeEditor();
     } catch (submitError) {
+      if (!contentSaved) await Promise.all(newAssetIds.map((id) => deleteAssetBestEffort(id)));
       setError(submitError instanceof Error ? submitError.message : "Não foi possível salvar o item.");
+      requestAnimationFrame(() => errorRef.current?.focus());
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="editor-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) editor.closeEditor(); }}>
-      <section className="editor-drawer" role="dialog" aria-modal="true" aria-labelledby="editor-drawer-title">
+    <div className="editor-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (!busy && event.target === event.currentTarget) editor.closeEditor(); }}>
+      <div
+        ref={dialogRef}
+        className="editor-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="editor-drawer-title"
+        aria-describedby="editor-drawer-description"
+        aria-busy={busy}
+        tabIndex={-1}
+      >
         <div className="editor-drawer-heading">
           <div>
             <p className="eyebrow">Edição contextual</p>
             <h2 id="editor-drawer-title">{title}</h2>
           </div>
-          <button type="button" className="drawer-close" aria-label="Fechar editor" onClick={editor.closeEditor}>×</button>
+          <button type="button" className="drawer-close" aria-label="Fechar editor" onClick={editor.closeEditor} disabled={busy}>×</button>
         </div>
+        <p id="editor-drawer-description" className="editor-drawer-description">Edite os campos abaixo. Itens ocultos continuam disponíveis para restauração no modo do proprietário.</p>
 
         <form className="editor-form" onSubmit={submit}>
           {drawer.collection === "timeline" ? <TimelineFields fields={fields} setField={setField} /> : null}
@@ -893,17 +1285,45 @@ function EditorDrawerContent({ drawer, editor }: { drawer: NonNullable<DrawerSta
           {drawer.collection === "contacts" ? <ContactFields fields={fields} setField={setField} /> : null}
           {drawer.collection === "interests" ? <InterestFields fields={fields} setField={setField} /> : null}
 
-          {error ? <p className="editor-error" role="alert">{error}</p> : null}
+          {error ? <p ref={errorRef} className="editor-error" role="alert" tabIndex={-1}>{error}</p> : null}
           <div className="editor-form-actions">
             <button type="button" className="button button-quiet" onClick={editor.closeEditor} disabled={busy}>Cancelar</button>
-            {isExisting ? <button type="button" className="button button-danger" onClick={() => { if (drawer.id && window.confirm("Ocultar este item do site?")) void editor.hideItem(drawer.collection, drawer.id); }} disabled={busy}>Ocultar</button> : null}
+            {isExisting && currentStatus !== "hidden" ? (
+              <button type="button" className="button button-quiet" onClick={() => { if (drawer.id) void runItemAction(() => editor.setItemStatus(drawer.collection, drawer.id!, "hidden")); }} disabled={busy}>Ocultar</button>
+            ) : null}
+            {isExisting && currentStatus === "hidden" ? (
+              <button type="button" className="button button-outline" onClick={() => { if (drawer.id) void runItemAction(() => editor.setItemStatus(drawer.collection, drawer.id!, "draft")); }} disabled={busy}>Restaurar como rascunho</button>
+            ) : null}
             <span className="editor-form-submit-group">
-              <button type="submit" name="actionStatus" value="draft" className="button button-outline" disabled={busy}>{busy ? "Salvando…" : "Salvar rascunho"}</button>
+              <button
+                type="submit"
+                name="actionStatus"
+                value={currentStatus === "hidden" ? "hidden" : "draft"}
+                className="button button-outline"
+                disabled={busy}
+              >{busy ? "Salvando…" : currentStatus === "hidden" ? "Salvar mantendo oculto" : "Salvar rascunho"}</button>
               <button type="submit" name="actionStatus" value="published" className="button button-primary" disabled={busy}>{busy ? "Salvando…" : "Publicar"}</button>
             </span>
           </div>
+          {isExisting ? (
+            <details className="editor-danger-zone">
+              <summary>Exclusão permanente</summary>
+              <p>Esta ação remove o item definitivamente. Para apenas tirá-lo do site, use “Ocultar”.</p>
+              <button
+                type="button"
+                className="button button-danger"
+                disabled={busy}
+                onClick={() => {
+                  if (!drawer.id || !window.confirm("Excluir permanentemente este item? Esta ação não pode ser desfeita.")) return;
+                  void runItemAction(() => editor.deleteItem(drawer.collection, drawer.id!));
+                }}
+              >
+                Excluir permanentemente
+              </button>
+            </details>
+          ) : null}
         </form>
-      </section>
+      </div>
     </div>
   );
 }
@@ -939,9 +1359,11 @@ function ProjectFields({ fields, setField, setCoverFile }: { fields: EditorFormS
           <EditorInput label="Texto alternativo da capa" value={String(fields.imageAlt ?? "")} onChange={(value) => setField("imageAlt", value)} />
           <EditorTextarea label="Descrição longa" value={String(fields.body ?? "")} onChange={(value) => setField("body", value)} />
           <UploadField label="Capa do projeto" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+          <ExistingCoverField fields={fields} setField={setField} setCoverFile={setCoverFile} />
         </div>
       </details>
       <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+      <PlaceholderPromotionField fields={fields} setField={setField} />
     </div>
   );
 }
@@ -960,9 +1382,11 @@ function NoteFields({ fields, setField, setCoverFile }: { fields: EditorFormStat
         <div className="editor-field-grid editor-field-grid--nested">
           <EditorInput label="Tags (separadas por vírgula)" value={String(fields.tags ?? "")} onChange={(value) => setField("tags", value)} />
           <UploadField label="Imagem de capa" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+          <ExistingCoverField fields={fields} setField={setField} setCoverFile={setCoverFile} />
         </div>
       </details>
       <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+      <PlaceholderPromotionField fields={fields} setField={setField} />
     </div>
   );
 }
@@ -982,12 +1406,37 @@ function LearningFields({ fields, setField, setCoverFile, setDocumentFile }: { f
         <summary>Mais opções e documentos</summary>
         <div className="editor-field-grid editor-field-grid--nested">
           <UploadField label="Capa opcional" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+          <ExistingCoverField fields={fields} setField={setField} setCoverFile={setCoverFile} />
           <UploadField label="Certificado / documento (privado por padrão)" accept="application/pdf,image/jpeg,image/png" onFile={setDocumentFile} />
-          {fields.documentAssetId ? <div className="editor-asset-status"><span>Documento anexado</span><a href={`/api/assets?id=${encodeURIComponent(String(fields.documentAssetId))}`} target="_blank" rel="noreferrer">Abrir documento atual</a><small>O documento continua privado até você marcar a opção abaixo.</small></div> : null}
-          <label className="editor-checkbox"><input type="checkbox" checked={fields.documentPublic === true} onChange={(event) => setField("documentPublic", event.target.checked)} /> Tornar o documento público</label>
+          {fields.documentAssetId && fields.removeDocument !== true ? (
+            <DocumentPanel
+              assetId={String(fields.documentAssetId)}
+              title={String(fields.title || "Documento")}
+              declaredPublic={fields.documentPublic === true}
+              onRemove={() => {
+                setDocumentFile(null);
+                setField("removeDocument", true);
+                setField("documentPublic", false);
+              }}
+            />
+          ) : null}
+          {fields.removeDocument === true ? <p className="editor-helper">O documento atual será removido quando você salvar.</p> : null}
+          <label className="editor-checkbox">
+            <input
+              type="checkbox"
+              checked={fields.documentPublic === true}
+              disabled={fields.removeDocument === true}
+              onChange={(event) => {
+                if (event.target.checked && !window.confirm("Tornar este documento público permitirá que visitantes o abram. Confirmar?")) return;
+                setField("documentPublic", event.target.checked);
+              }}
+            />
+            Tornar o documento público
+          </label>
         </div>
       </details>
       <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
+      <PlaceholderPromotionField fields={fields} setField={setField} />
     </div>
   );
 }
@@ -1007,8 +1456,9 @@ function QuestionFields({ fields, setField, setCoverFile }: { fields: EditorForm
       <EditorInput label="Título da pergunta" value={String(fields.title ?? "")} onChange={(value) => setField("title", value)} required />
       <EditorTextarea label="Texto da pergunta" value={String(fields.text ?? "")} onChange={(value) => setField("text", value)} required />
       <EditorInput label="Imagem (URL opcional)" type="url" value={String(fields.image ?? "")} onChange={(value) => setField("image", value)} />
-      <EditorInput label="Texto alternativo da imagem" value={String(fields.imageAlt ?? "")} onChange={(value) => setField("imageAlt", value)} />
-      <UploadField label="Imagem da pergunta" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+          <EditorInput label="Texto alternativo da imagem" value={String(fields.imageAlt ?? "")} onChange={(value) => setField("imageAlt", value)} />
+          <UploadField label="Imagem da pergunta" accept="image/jpeg,image/png,image/webp,image/gif" onFile={setCoverFile} />
+          <ExistingCoverField fields={fields} setField={setField} setCoverFile={setCoverFile} />
       <EditorStatusField value={String(fields.editorialStatus ?? "draft")} onChange={(value) => setField("editorialStatus", value)} />
     </div>
   );
@@ -1035,7 +1485,27 @@ function EditorTextarea({ label, value, onChange, required = false }: { label: s
 }
 
 function EditorStatusField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return <label className="editor-field"><span>Visibilidade</span><select value={value} onChange={(event) => onChange(event.target.value)}><option value="draft">Rascunho</option><option value="published">Publicado</option><option value="hidden">Oculto</option></select></label>;
+  const normalizedValue = value === "hidden" ? "hidden" : value === "published" ? "published" : "draft";
+  return (
+    <label className="editor-field">
+      <span>Visibilidade</span>
+      <select value={normalizedValue} onChange={(event) => onChange(event.target.value)}>
+        {normalizedValue === "hidden" ? <option value="hidden">Oculto — use uma ação explícita para restaurar</option> : null}
+        {normalizedValue !== "hidden" ? <option value="draft">Rascunho</option> : null}
+        {normalizedValue !== "hidden" ? <option value="published">Publicado</option> : null}
+      </select>
+    </label>
+  );
+}
+
+function PlaceholderPromotionField({ fields, setField }: { fields: EditorFormState; setField: (name: string, value: string | boolean) => void }) {
+  if (fields.placeholder !== true) return null;
+  return (
+    <label className="editor-checkbox">
+      <input type="checkbox" checked onChange={(event) => setField("placeholder", event.target.checked)} />
+      Manter aviso de conteúdo temporário
+    </label>
+  );
 }
 
 function RichEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
@@ -1081,13 +1551,46 @@ function UploadField({ label, accept, onFile }: { label: string; accept: string;
   );
 }
 
+function ExistingCoverField({
+  fields,
+  setField,
+  setCoverFile,
+}: {
+  fields: EditorFormState;
+  setField: (name: string, value: string | boolean) => void;
+  setCoverFile: (file: File | null) => void;
+}) {
+  if (!fields.coverAssetId || fields.removeCover === true) {
+    return fields.removeCover === true ? <p className="editor-helper">A capa atual será removida quando você salvar.</p> : null;
+  }
+  const assetId = String(fields.coverAssetId);
+  return (
+    <div className="editor-cover-status">
+      <img src={`/api/assets?id=${encodeURIComponent(assetId)}`} alt="Prévia da capa atual" />
+      <div>
+        <span>Capa atual</span>
+        <button
+          type="button"
+          className="context-edit context-edit-danger"
+          onClick={() => {
+            setCoverFile(null);
+            setField("removeCover", true);
+          }}
+        >
+          Remover capa
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function initialEditorFields(content: EditorContent, drawer: NonNullable<DrawerState>): EditorFormState {
   const item = drawer.id ? (content[drawer.collection] as Array<Record<string, unknown>>).find((entry) => entry.id === drawer.id) : undefined;
   if (drawer.collection === "timeline") return { period: String(item?.period ?? "Agora"), title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), description: String(item?.description ?? ""), category: String(item?.category ?? "Trajetória"), editorialStatus: String(item?.editorialStatus ?? "draft") };
-  if (drawer.collection === "projects") return { title: String(item?.title ?? ""), description: String(item?.description ?? ""), status: String(item?.status ?? "Em andamento"), period: String(item?.period ?? "Em construção"), technologies: Array.isArray(item?.technologies) ? item.technologies.join(", ") : "", body: String(item?.body ?? ""), github: String(item?.github ?? ""), demo: String(item?.demo ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
-  if (drawer.collection === "notes") return { title: String(item?.title ?? ""), body: String(item?.body ?? "<p></p>"), area: String(item?.area ?? "Caderno"), date: String(item?.date ?? ""), tags: Array.isArray(item?.tags) ? item.tags.join(", ") : "", editorialStatus: String(item?.editorialStatus ?? "draft") };
-  if (drawer.collection === "learning") return { title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), year: String(item?.year ?? ""), hours: String(item?.hours ?? ""), category: String(item?.category ?? "Formação"), description: String(item?.description ?? ""), documentAssetId: String(item?.documentAssetId ?? ""), documentPublic: item?.documentPublic === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
-  if (drawer.collection === "questions") return { title: String(item?.title ?? ""), text: String(item?.text ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "projects") return { title: String(item?.title ?? ""), description: String(item?.description ?? ""), status: String(item?.status ?? "Em andamento"), period: String(item?.period ?? "Em construção"), technologies: Array.isArray(item?.technologies) ? item.technologies.join(", ") : "", body: String(item?.body ?? ""), github: String(item?.github ?? ""), demo: String(item?.demo ?? ""), image: String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), coverAssetId: String(item?.coverAssetId ?? ""), removeCover: false, placeholder: item?.placeholder === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "notes") return { title: String(item?.title ?? ""), body: String(item?.body ?? "<p></p>"), area: String(item?.area ?? "Caderno"), date: String(item?.date ?? ""), tags: Array.isArray(item?.tags) ? item.tags.join(", ") : "", coverAssetId: String(item?.coverAssetId ?? ""), removeCover: false, placeholder: item?.placeholder === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "learning") return { title: String(item?.title ?? ""), institution: String(item?.institution ?? ""), year: String(item?.year ?? ""), hours: String(item?.hours ?? ""), category: String(item?.category ?? "Formação"), description: String(item?.description ?? ""), coverAssetId: String(item?.coverAssetId ?? ""), removeCover: false, documentAssetId: String(item?.documentAssetId ?? ""), removeDocument: false, documentPublic: item?.documentPublic === true, placeholder: item?.placeholder === true, editorialStatus: String(item?.editorialStatus ?? "draft") };
+  if (drawer.collection === "questions") return { title: String(item?.title ?? ""), text: String(item?.text ?? ""), image: item?.coverAssetId ? "" : String(item?.image ?? ""), imageAlt: String(item?.imageAlt ?? ""), coverAssetId: String(item?.coverAssetId ?? ""), removeCover: false, editorialStatus: String(item?.editorialStatus ?? "draft") };
   if (drawer.collection === "contacts") return { label: String(item?.label ?? ""), value: String(item?.value ?? ""), href: String(item?.href ?? ""), note: String(item?.note ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
   return { value: String(item?.value ?? ""), editorialStatus: String(item?.editorialStatus ?? "draft") };
 }
@@ -1100,11 +1603,10 @@ function commaList(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-async function uploadAsset(file: File, kind: "image" | "document", isPublic: boolean, altText: string): Promise<{ id: string; altText: string }> {
+async function uploadAsset(file: File, kind: "image" | "document", altText: string): Promise<{ id: string; altText: string }> {
   const form = new FormData();
   form.append("file", file);
   form.append("kind", kind);
-  form.append("isPublic", String(isPublic));
   form.append("altText", altText);
   const response = await fetch("/api/assets", { method: "POST", body: form });
   const payload = await response.json() as { asset?: { id: string; altText: string }; error?: string };
@@ -1112,19 +1614,57 @@ async function uploadAsset(file: File, kind: "image" | "document", isPublic: boo
   return payload.asset;
 }
 
-export default function HomeExperience() {
-  const [route, setRoute] = useState<Route>(() => {
-    if (typeof window === "undefined") return "/";
-    return normalizeRoute(window.location.pathname);
-  });
-  const [content, setContent] = useState<EditorContent>(() => seedEditorContent());
+async function deleteAssetBestEffort(id: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(`/api/assets?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (response.ok || response.status === 404) return true;
+      if (response.status !== 503 && response.status !== 409) return false;
+    } catch {
+      // Retry transient network failures below. The content reconciliation has
+      // already made an unlinked asset private before cleanup starts.
+    }
+    if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 120 * (attempt + 1)));
+  }
+  return false;
+}
+
+type ContentApiPayload = {
+  content?: EditorContent;
+  version?: number;
+  error?: string;
+};
+
+export default function HomeExperience({ initialRoute, initialContent }: { initialRoute: Route; initialContent: EditorContent }) {
+  const [route, setRoute] = useState<Route>(initialRoute);
+  const [content, setContent] = useState<EditorContent>(initialContent);
   const [ownerAvailable, setOwnerAvailable] = useState(false);
   const [editMode, setEditModeState] = useState(false);
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const pageRef = useRef<HTMLDivElement>(null);
-  const reducedMotion = useReducedMotion();
+  const pageRef = useRef<HTMLElement>(null);
+  const focusBeforeDrawerRef = useRef<HTMLElement | null>(null);
+  const focusPageAfterNavigationRef = useRef(false);
+  const contentVersionRef = useRef<number | null>(null);
   const canEdit = ownerAvailable && editMode;
+
+  const applyVersionedContent = (payload: ContentApiPayload): boolean => {
+    if (!payload.content || !Number.isSafeInteger(payload.version) || (payload.version ?? 0) < 1) return false;
+    contentVersionRef.current = payload.version!;
+    setContent(payload.content);
+    return true;
+  };
+
+  const versionedHeaders = (includeJson = true): Record<string, string> => {
+    const version = contentVersionRef.current;
+    if (!Number.isSafeInteger(version) || (version ?? 0) < 1) {
+      throw new Error("A versão editorial não está disponível. Reabra o modo de edição antes de salvar.");
+    }
+    return {
+      ...(includeJson ? { "Content-Type": "application/json" } : {}),
+      "If-Match": `"${version}"`,
+    };
+  };
 
   useEffect(() => {
     let active = true;
@@ -1136,36 +1676,33 @@ export default function HomeExperience() {
         const requestedEdit = new URLSearchParams(window.location.search).get("edit") === "1";
         if (active) {
           setOwnerAvailable(canOwnerEdit);
-          setEditModeState(canOwnerEdit && requestedEdit);
+          // Editing is enabled only after the private payload and its version
+          // are both confirmed below.
+          setEditModeState(false);
         }
 
-        const contentResponse = await fetch(`/api/content${canOwnerEdit && requestedEdit ? "?editor=1" : ""}`, { cache: "no-store" });
-        if (contentResponse.ok) {
-          const payload = await contentResponse.json() as { content?: EditorContent };
-          if (active && payload.content) setContent(payload.content);
+        if (canOwnerEdit && requestedEdit) {
+          const contentResponse = await fetch("/api/content?editor=1", { cache: "no-store" });
+          const payload = await contentResponse.json() as ContentApiPayload;
+          if (active) {
+            if (contentResponse.ok && applyVersionedContent(payload)) {
+              setEditModeState(true);
+            } else {
+              setEditModeState(false);
+              setStatusMessage(payload.error ?? "Não foi possível confirmar a versão do conteúdo editorial.");
+            }
+          }
         }
       } catch {
-        // The static seed remains available when the local preview has no D1 binding.
+        if (active) {
+          setEditModeState(false);
+          setStatusMessage("Não foi possível carregar o modo de edição.");
+        }
       }
     };
     void bootstrap();
     return () => { active = false; };
   }, []);
-
-  const enterEditMode = async () => {
-    if (!ownerAvailable) return;
-    setStatusMessage("Carregando conteúdo privado…");
-    const response = await fetch("/api/content?editor=1", { cache: "no-store" });
-    const payload = await response.json() as { content?: EditorContent; error?: string };
-    if (!response.ok || !payload.content) {
-      setStatusMessage(payload.error ?? "Não foi possível abrir o editor.");
-      return;
-    }
-    setContent(payload.content);
-    setEditModeState(true);
-    window.history.replaceState({}, "", `${window.location.pathname}?edit=1`);
-    setStatusMessage("Conteúdo privado carregado.");
-  };
 
   const viewAsVisitor = async () => {
     setEditModeState(false);
@@ -1173,8 +1710,11 @@ export default function HomeExperience() {
     window.history.replaceState({}, "", window.location.pathname);
     try {
       const response = await fetch("/api/content", { cache: "no-store" });
-      const payload = await response.json() as { content?: EditorContent };
-      if (response.ok && payload.content) setContent(payload.content);
+      const payload = await response.json() as ContentApiPayload;
+      if (response.ok && payload.content) {
+        setContent(payload.content);
+        if (Number.isSafeInteger(payload.version) && (payload.version ?? 0) > 0) contentVersionRef.current = payload.version!;
+      }
       else setContent((current) => publicEditorContent(current));
     } catch {
       setContent((current) => publicEditorContent(current));
@@ -1184,58 +1724,61 @@ export default function HomeExperience() {
   const saveItem = async (collection: EditableCollection, id: string | undefined, payload: Record<string, unknown>) => {
     const response = await fetch(id ? `/api/content?collection=${collection}&id=${encodeURIComponent(id)}` : "/api/content", {
       method: id ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: versionedHeaders(),
       body: JSON.stringify(id ? payload : { collection, item: payload }),
     });
-    const result = await response.json() as { content?: EditorContent; error?: string };
-    if (!response.ok || !result.content) throw new Error(result.error ?? "Não foi possível salvar o item.");
-    setContent(result.content);
-    setDrawer(null);
+    const result = await response.json() as ContentApiPayload;
+    if (!response.ok || !applyVersionedContent(result)) throw new Error(result.error ?? "Não foi possível salvar o item.");
     setStatusMessage("Alteração salva.");
   };
 
-  const hideItem = async (collection: EditableCollection, id: string) => {
-    const response = await fetch(`/api/content?collection=${collection}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    const result = await response.json() as { content?: EditorContent; error?: string };
-    if (!response.ok || !result.content) {
-      setStatusMessage(result.error ?? "Não foi possível ocultar o item.");
-      return;
-    }
-    setContent(result.content);
-    setDrawer(null);
-    setStatusMessage("Item ocultado.");
+  const setItemStatus = async (collection: EditableCollection, id: string, status: EditorialStatus) => {
+    const response = await fetch(`/api/content?collection=${collection}&id=${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: versionedHeaders(),
+      body: JSON.stringify({ editorialStatus: status }),
+    });
+    const result = await response.json() as ContentApiPayload;
+    if (!response.ok || !applyVersionedContent(result)) throw new Error(result.error ?? "Não foi possível alterar a visibilidade do item.");
+    closeEditor();
+    setStatusMessage(status === "hidden" ? "Item ocultado. Ele pode ser restaurado no modo de edição." : "Item restaurado como rascunho.");
+  };
+
+  const deleteItem = async (collection: EditableCollection, id: string) => {
+    const currentItem = (content[collection] as Array<Record<string, unknown>>).find((item) => item.id === id);
+    const assetIds = [currentItem?.coverAssetId, currentItem?.documentAssetId]
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+    const response = await fetch(`/api/content?collection=${collection}&id=${encodeURIComponent(id)}`, { method: "DELETE", headers: versionedHeaders(false) });
+    const result = await response.json() as ContentApiPayload;
+    if (!response.ok || !applyVersionedContent(result)) throw new Error(result.error ?? "Não foi possível excluir o item.");
+    const cleanup = await Promise.all(assetIds.map((assetId) => deleteAssetBestEffort(assetId)));
+    closeEditor();
+    setStatusMessage(cleanup.every(Boolean)
+      ? "Item excluído permanentemente; arquivos associados também foram removidos."
+      : "Item excluído. Um arquivo permaneceu privado e requer nova tentativa de limpeza.");
   };
 
   const reorder = async (collection: EditableCollection, orderedIds: string[]) => {
-    const response = await fetch("/api/content", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ collection, orderedIds }) });
-    const result = await response.json() as { content?: EditorContent; error?: string };
-    if (!response.ok || !result.content) {
+    const response = await fetch("/api/content", { method: "PUT", headers: versionedHeaders(), body: JSON.stringify({ collection, orderedIds }) });
+    const result = await response.json() as ContentApiPayload;
+    if (!response.ok || !applyVersionedContent(result)) {
       setStatusMessage(result.error ?? "Não foi possível reordenar.");
       return;
     }
-    setContent(result.content);
     setStatusMessage("Ordem atualizada.");
   };
 
-  const saveIdentity = async (field: "description", value: string) => {
-    const response = await fetch("/api/content?collection=identity&id=primary", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
-    const result = await response.json() as { content?: EditorContent; error?: string };
-    if (!response.ok || !result.content) {
-      setStatusMessage(result.error ?? "Não foi possível salvar o texto.");
-      return;
-    }
-    setContent(result.content);
+  const saveIdentity = async (field: "name" | "role" | "location" | "description", value: string) => {
+    const response = await fetch("/api/content?collection=identity&id=primary", { method: "PATCH", headers: versionedHeaders(), body: JSON.stringify({ [field]: value }) });
+    const result = await response.json() as ContentApiPayload;
+    if (!response.ok || !applyVersionedContent(result)) throw new Error(result.error ?? "Não foi possível salvar o texto.");
     setStatusMessage("Texto salvo.");
   };
 
   const savePage = async (page: EditablePage, fields: Record<string, string>) => {
-    const response = await fetch(`/api/content?collection=${page}&id=primary`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) });
-    const result = await response.json() as { content?: EditorContent; error?: string };
-    if (!response.ok || !result.content) {
-      setStatusMessage(result.error ?? "Não foi possível salvar a página.");
-      return;
-    }
-    setContent(result.content);
+    const response = await fetch(`/api/content?collection=${page}&id=primary`, { method: "PATCH", headers: versionedHeaders(), body: JSON.stringify(fields) });
+    const result = await response.json() as ContentApiPayload;
+    if (!response.ok || !applyVersionedContent(result)) throw new Error(result.error ?? "Não foi possível salvar a página.");
     setStatusMessage("Texto salvo.");
   };
 
@@ -1244,78 +1787,76 @@ export default function HomeExperience() {
   };
 
   const navigate = (nextRoute: Route) => {
-    window.history.pushState({}, "", nextRoute);
+    window.history.pushState({}, "", editMode ? `${nextRoute}?edit=1` : nextRoute);
+    focusPageAfterNavigationRef.current = true;
     setRoute(nextRoute);
-    window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   };
 
   useLayoutEffect(() => {
-    const syncRoute = () => setRoute(normalizeRoute(window.location.pathname));
+    const syncRoute = () => {
+      const nextRoute = normalizeSiteRoute(window.location.pathname);
+      if (nextRoute) {
+        focusPageAfterNavigationRef.current = true;
+        setRoute(nextRoute);
+      }
+    };
     window.addEventListener("popstate", syncRoute);
     return () => window.removeEventListener("popstate", syncRoute);
   }, []);
 
+  useEffect(() => {
+    document.title = routeDefinition(route).title;
+    if (!focusPageAfterNavigationRef.current) return;
+    focusPageAfterNavigationRef.current = false;
+    requestAnimationFrame(() => pageRef.current?.focus({ preventScroll: true }));
+  }, [route]);
+
   useGSAP(() => {
-    if (reducedMotion) return;
+    const media = gsap.matchMedia();
+    media.add("(prefers-reduced-motion: no-preference)", () => {
+      const revealTargets = pageRef.current?.querySelectorAll<HTMLElement>(".hero-reveal, .reveal") ?? [];
+      if (revealTargets.length) {
+        gsap.fromTo(
+          revealTargets,
+          { opacity: 0, y: 22 },
+          { opacity: 1, y: 0, duration: 0.78, ease: "power3.out", stagger: 0.05, clearProps: "opacity,transform" },
+        );
+      }
 
-    const revealTargets = gsap.utils.toArray<HTMLElement>(".hero-reveal, .reveal");
-    gsap.fromTo(
-      revealTargets,
-      { opacity: 0, y: 26 },
-      { opacity: 1, y: 0, duration: 0.9, ease: "power3.out", stagger: 0.06, clearProps: "transform" },
-    );
-
-    gsap.utils.toArray<HTMLElement>(".image-reveal").forEach((element) => {
-      gsap.fromTo(
-        element,
-        { opacity: 0.28, scale: 0.84, filter: "brightness(0.65)" },
-        {
+      const imageTargets = pageRef.current?.querySelectorAll<HTMLElement>(".image-reveal") ?? [];
+      imageTargets.forEach((element) => {
+        gsap.fromTo(element, { opacity: 0.72, scale: 0.96 }, {
           opacity: 1,
           scale: 1,
-          filter: "brightness(1)",
-          ease: "none",
-          scrollTrigger: {
-            trigger: element,
-            start: "top bottom",
-            end: "bottom top",
-            scrub: true,
-          },
-        },
-      );
-    });
+          duration: 0.7,
+          ease: "power2.out",
+          clearProps: "opacity,transform",
+          scrollTrigger: { trigger: element, start: "top 88%", once: true },
+        });
+      });
 
-    gsap.utils.toArray<HTMLElement>(".study-card-reveal").forEach((element) => {
-      gsap.fromTo(
-        element,
-        { opacity: 0, y: 22 },
-        {
+      const studyTargets = pageRef.current?.querySelectorAll<HTMLElement>(".study-card-reveal") ?? [];
+      studyTargets.forEach((element) => {
+        gsap.fromTo(element, { opacity: 0, y: 20 }, {
           opacity: 1,
           y: 0,
-          duration: 0.72,
+          duration: 0.68,
           ease: "power3.out",
           clearProps: "opacity,transform",
-          scrollTrigger: {
-            trigger: element,
-            start: "top 86%",
-            toggleActions: "play none none none",
-            once: true,
-          },
-        },
-      );
-    });
-
-    const pinTarget = pageRef.current?.querySelector<HTMLElement>(".study-stage-pin");
-    const pinSection = pageRef.current?.querySelector<HTMLElement>(".study-stage");
-    if (pinTarget && pinSection && window.matchMedia("(min-width: 900px)").matches) {
-      ScrollTrigger.create({
-        trigger: pinSection,
-        pin: pinTarget,
-        start: "top top+=100",
-        end: "bottom bottom-=100",
-        pinSpacing: false,
+          scrollTrigger: { trigger: element, start: "top 86%", once: true },
+        });
       });
-    }
-  }, { scope: pageRef, dependencies: [route, reducedMotion], revertOnUpdate: true });
+
+      const pinTarget = pageRef.current?.querySelector<HTMLElement>(".study-stage-pin");
+      const pinSection = pageRef.current?.querySelector<HTMLElement>(".study-stage");
+      if (pinTarget && pinSection && window.matchMedia("(min-width: 900px)").matches) {
+        ScrollTrigger.create({ trigger: pinSection, pin: pinTarget, start: "top top+=100", end: "bottom bottom-=100", pinSpacing: false });
+      }
+    });
+    return () => media.revert();
+  }, { scope: pageRef, dependencies: [route], revertOnUpdate: true });
 
   let page: ReactNode;
   if (route === "/sobre") page = <AboutPage onNavigate={navigate} />;
@@ -1326,6 +1867,15 @@ export default function HomeExperience() {
   else if (route === "/contato") page = <ContactPage onNavigate={navigate} />;
   else page = <HomePage onNavigate={navigate} />;
 
+  const closeEditor = () => {
+    setDrawer(null);
+    const target = focusBeforeDrawerRef.current;
+    requestAnimationFrame(() => {
+      if (target?.isConnected) target.focus();
+      focusBeforeDrawerRef.current = null;
+    });
+  };
+
   const editorController: EditorController = {
     content,
     ownerAvailable,
@@ -1333,13 +1883,16 @@ export default function HomeExperience() {
     canEdit,
     drawer,
     statusMessage,
-    openEditor: (collection, id) => setDrawer({ collection, id }),
-    closeEditor: () => setDrawer(null),
-    enterEditMode,
+    openEditor: (collection, id) => {
+      focusBeforeDrawerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setDrawer({ collection, id });
+    },
+    closeEditor,
     viewAsVisitor,
     signOut,
     saveItem,
-    hideItem,
+    setItemStatus,
+    deleteItem,
     reorder,
     saveIdentity,
     savePage,
@@ -1349,10 +1902,13 @@ export default function HomeExperience() {
   return (
     <EditorContext.Provider value={editorController}>
       <div className="site-app">
-        <SiteHeader key={route} route={route} onNavigate={navigate} />
-        <main className="page-shell" ref={pageRef}>{page}</main>
-        <SiteFooter onNavigate={navigate} />
-        <OwnerBar />
+        <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
+        <div className="site-surface" inert={drawer ? true : undefined} aria-hidden={drawer ? true : undefined}>
+          <SiteHeader route={route} onNavigate={navigate} />
+          <main id="main-content" className="page-shell" ref={pageRef} tabIndex={-1}>{page}</main>
+          <SiteFooter onNavigate={navigate} />
+          <OwnerBar />
+        </div>
         <EditorDrawer />
       </div>
     </EditorContext.Provider>

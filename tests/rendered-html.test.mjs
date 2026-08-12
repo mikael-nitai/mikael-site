@@ -1,40 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import test from "node:test";
-
-async function render(pathname = "/") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request(`http://localhost${pathname}`, {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
-
-test("server-renders the personal site", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, /<title>Mikael — Física, Astrofísica e aprendizagem<\/title>/i);
-  assert.match(html, /Bacharelado em Física/i);
-  assert.match(html, /Um espaço pessoal para registrar/i);
-  assert.doesNotMatch(html, /Your site is taking shape|Building your site|codex-preview/i);
-  assert.doesNotMatch(html, /react-loading-skeleton/i);
-});
 
 test("the starter loading surface is removed from the product", async () => {
   const [page, layout, packageJson, stylesheet] = await Promise.all([
@@ -51,9 +17,25 @@ test("the starter loading surface is removed from the product", async () => {
   assert.match(stylesheet, /prefers-reduced-motion/);
 });
 
-test("direct public routes render the site shell", async () => {
-  const response = await render("/contato");
-  assert.equal(response.status, 200);
-  const html = await response.text();
-  assert.match(html, /Mikael/);
+test("the production client stays inside explicit payload regression budgets", async () => {
+  const chunkDirectory = new URL("../dist/client/_next/static/chunks/", import.meta.url);
+  const cssDirectory = new URL("../dist/client/_next/static/css/", import.meta.url);
+  const [chunkNames, cssNames, portrait] = await Promise.all([
+    readdir(chunkDirectory),
+    readdir(cssDirectory),
+    stat(new URL("../dist/client/mikael-portrait.webp", import.meta.url)),
+  ]);
+  const javascript = await Promise.all(
+    chunkNames.filter((name) => name.endsWith(".js")).map((name) => stat(new URL(name, chunkDirectory))),
+  );
+  const stylesheets = await Promise.all(
+    cssNames.filter((name) => name.endsWith(".css")).map((name) => stat(new URL(name, cssDirectory))),
+  );
+  const javascriptBytes = javascript.reduce((total, file) => total + file.size, 0);
+  const cssBytes = stylesheets.reduce((total, file) => total + file.size, 0);
+
+  assert.ok(javascriptBytes < 650_000, `client JavaScript grew to ${javascriptBytes} bytes`);
+  assert.ok(Math.max(...javascript.map((file) => file.size)) < 225_000, "a client JavaScript chunk exceeded 225 kB");
+  assert.ok(cssBytes < 75_000, `client CSS grew to ${cssBytes} bytes`);
+  assert.ok(portrait.size < 150_000, `portrait grew to ${portrait.size} bytes`);
 });

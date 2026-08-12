@@ -40,20 +40,20 @@ O total ocupa `10 + 7 + 4 + 3 = 24` células, exatamente as `12 × 2` disponíve
 - Header sticky com wordmark serifado e navegação discreta.
 - Hero assimétrico com imagem de céu, linhas orbitais em CSS e apenas duas ações principais.
 - Cards de trajetória, projetos, caderno e formação em bento grid.
-- Marquee contínuo com os eixos de curiosidade.
+- Marquee discreto com uma única cópia semântica dos eixos de curiosidade; no mobile, a apresentação é estática.
 - Títulos com pequenas imagens inline para introduzir variação editorial.
-- Carrossel manual de perguntas em aberto, com controles acessíveis.
+- Pilha editorial de perguntas em aberto, sem carrossel redundante.
 - Footer de baixa densidade, sem redes sociais ou contatos inventados.
 - Camada editorial contextual: barra discreta do proprietário, ações “Editar” junto ao item relevante e drawers em painel lateral; ela não altera o layout quando o visitante não está autorizado.
 - “Visualizar como visitante” remove barra, botões, badges de rascunho e interesses de administração antes de recarregar a coleção pública.
 
 ## Movimento
 
-GSAP e ScrollTrigger fazem a entrada inicial, o pin da coluna esquerda no campo de estudo e o ciclo de escala/opacidade das imagens. Hover usa transições de baixa amplitude. Não há partículas contínuas, cursor perseguido ou efeitos que disputem atenção com a leitura. `prefers-reduced-motion` desativa o movimento essencial e o marquee.
+GSAP e ScrollTrigger fazem entradas de baixa amplitude e, em desktop, o pin útil da introdução do campo de estudo. Alvos são verificados antes da animação e o conteúdo permanece visível como estado base. Não há scrub agressivo, filtros contínuos, partículas ou cursor perseguido. `prefers-reduced-motion` impede a inicialização do movimento desde o primeiro frame.
 
 ## Responsividade
 
-Desktop usa composição assimétrica e grid denso. Tablet reduz o bento para seis colunas e converte o header em menu compacto. Celular reorganiza hero, cards, timeline, carrossel e footer em uma coluna, com botões de largura confortável e sem overflow horizontal.
+Desktop usa composição assimétrica e grid denso. Em até 1040 px, o header vira menu compacto para acomodar os seis destinos. Celular reorganiza hero, cards, timeline, documentos e footer em uma coluna, com botões de largura confortável e sem overflow horizontal.
 
 ## Acessibilidade
 
@@ -66,8 +66,17 @@ O projeto usa landmarks semânticos, headings hierárquicos, alt text nas imagen
 - Formulários distinguem claramente rascunho, publicado e oculto. Ações destrutivas preferem ocultar o item e pedem confirmação.
 - Notas têm rich text limitado a headings, negrito, itálico, link, citação, lista e código. O preview e a listagem reutilizam a linguagem do site, sem abrir uma dashboard paralela.
 - Uploads têm áreas de clique e arrastar. Capas públicas usam a rota protegida por metadata; documentos ficam privados salvo escolha explícita.
-## Extensoes recentes
+## Extensões recentes
 
-- A pagina de Contato usa a mesma linguagem editorial e troca o estado vazio por cards de canais reais.
-- Perguntas em aberto aceitam imagem editavel e usam entrada one-shot para nao permanecerem com opacidade residual.
-- O modo editorial preserva a composicao publica: controles aparecem somente para o proprietario autenticado.
+- A página de Contato usa a mesma linguagem editorial e troca o estado vazio por cards de canais reais.
+- Perguntas em aberto aceitam imagem editável e usam entrada one-shot para não permanecerem com opacidade residual.
+- O modo editorial preserva a composição pública: controles aparecem somente para o proprietário autenticado.
+
+## Refinamento de arquitetura e interação
+
+- O hero assimétrico foi preservado por corresponder ao caderno acadêmico pessoal. Recomendações visuais genéricas ou comerciais não substituem essa direção.
+- A estrutura AIDA, os títulos largos e o bento denso continuam como base; o carrossel que repetia as perguntas foi removido para reduzir redundância.
+- O menu compacto só existe no DOM enquanto aberto e oferece fechamento por `Esc`, clique externo e retorno de foco.
+- O drawer editorial gerencia foco inicial, ciclo de foco, `Esc`, bloqueio do fundo, mensagens de erro focáveis e restauração do foco ao controle de origem.
+- Formação, projetos, notas e trajetória exibem os metadados públicos que o editor coleta. Documentos formam uma unidade visual com seus registros e continuam privados por padrão.
+- A camada de decisão do `gpt-taste` conserva hierarquia editorial, bento e espaçamento quando agregam valor, mas rejeita RNG de layout, efeitos comerciais e movimento que prejudique identidade, acessibilidade, mobile ou desempenho.

@@ -32,12 +32,16 @@ npm run test
 npm run build
 ```
 
-O teste renderiza o HTML do worker e verifica que a página real substituiu o starter, que o título e o conteúdo principal existem e que as regras visuais essenciais permanecem presentes.
+A suíte combina contratos unitários, budgets do bundle e Playwright em Chrome real. Ela cobre SSR e metadados de todas as rotas, 404, hidratação, navegação, breakpoints de 390 a 1600 px, teclado, menu, drawer, edição contextual, ocultação reversível e `prefers-reduced-motion` desde o primeiro frame.
 
 ## Estrutura
 
-- `app/home/HomeExperience.tsx`: shell da aplicação, navegação e páginas
+- `app/site/routes.ts`: registro canônico de rotas e metadados
+- `app/home/HomeExperience.tsx`: superfície pública e camada editorial contextual
+- `app/api/content/route.ts`: validação, versão e mutações editoriais
+- `app/api/assets/route.ts`: upload, metadados, autorização e ciclo de vida de arquivos
 - `app/globals.css`: tokens, layout, responsividade e animações CSS
+- `lib/content-store.ts`: persistência D1 e reconciliação de referências R2
 - `content/siteData.ts`: dados de trajetória, projetos, notas, formação e interesses
 - `public/`: favicon e assets públicos
 - `AGENTS.md`: regras permanentes para manutenção por agentes
@@ -54,7 +58,9 @@ O conteúdo inicial continua em `content/siteData.ts` como seed honesto. Em prod
 - A barra do proprietário aparece somente para a conta autorizada; “Visualizar como visitante” remove a camada editorial e recarrega apenas o conteúdo público.
 - Textos curtos podem ser editados inline. Projetos, notas, marcos, formações e interesses usam drawers contextuais com estados de rascunho, publicado e oculto.
 - O editor de notas oferece rich text leve, capa opcional e upload por clique ou arrastar; o resumo e o tempo de leitura são derivados do texto.
-- APIs de escrita rejeitam visitantes e contas autenticadas que não sejam o proprietário. Assets privados exigem a mesma autorização em cada leitura.
+- Ocultar é reversível; restaurar retorna o item a rascunho. Exclusão permanente é uma ação separada e confirmada.
+- Uploads entram privados. Capas só são públicas enquanto referenciadas por um item publicado; documentos exigem também `documentPublic === true`.
+- APIs de escrita rejeitam visitantes e contas autenticadas que não sejam o proprietário. Assets privados exigem a mesma autorização em cada leitura, e mutações concorrentes usam controle de versão.
 
 ## Publicação
 
@@ -62,6 +68,7 @@ O projeto foi preparado para publicação via Sites. Depois de um build válido,
 ## Recursos editoriais atuais
 
 - Home, Sobre e Contato permitem editar textos inline dentro do modo `/edit`.
-- Perguntas em aberto aceitam URL ou upload de imagem propria, com texto alternativo.
-- Contato permite criar canais com rotulo, valor, link e nota. O placeholder "Contato a configurar" aparece somente quando nao existe contato publicado.
-- A pagina Sobre usa altura natural e aceita textos longos sem caixas fixas.
+- Perguntas em aberto aceitam URL ou upload de imagem própria, com texto alternativo.
+- Contato permite criar canais com rótulo, valor, link e nota. O placeholder “Contato a configurar” aparece somente quando não existe contato publicado.
+- A página Sobre usa altura natural e aceita textos longos sem caixas fixas.
+- Projetos, notas, trajetória e formação consomem publicamente os campos oferecidos pelo editor; documentos privados continuam omitidos da resposta pública.

@@ -10,8 +10,12 @@ import tseslint from "typescript-eslint";
 const eslintConfig = defineConfig([
   globalIgnores([
     ".next/**",
+    ".vinext/**",
+    ".wrangler/**",
     "dist/**",
     "out/**",
+    "outputs/**",
+    "work/**",
     "build/**",
     "next-env.d.ts",
   ]),
@@ -34,6 +38,11 @@ const eslintConfig = defineConfig([
       react: {
         version: "detect",
       },
+    },
+    rules: {
+      // Native anchors are required at the Vinext authentication boundary;
+      // next/link currently fails there during client navigation/prefetch.
+      "@next/next/no-html-link-for-pages": "off",
     },
   },
 ]);

@@ -124,9 +124,12 @@ export function sortEditorContent(content: EditorContent): EditorContent {
 export function publicEditorContent(content: EditorContent): EditorContent {
   const published = <T extends EditorialMeta>(entries: T[]) =>
     entries.filter((entry) => entry.editorialStatus === "published");
-  const publicLearning = published(content.learning).map((entry) =>
-    entry.documentPublic ? entry : { ...entry, documentAssetId: undefined },
-  );
+  const publicLearning = published(content.learning).map((entry) => {
+    const { documentAssetId, ...publicEntry } = entry;
+    return entry.documentPublic === true && documentAssetId
+      ? { ...publicEntry, documentAssetId, documentPublic: true }
+      : { ...publicEntry, documentPublic: false };
+  });
 
   return sortEditorContent({
     ...content,
